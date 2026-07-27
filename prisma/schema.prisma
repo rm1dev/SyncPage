@@ -1,4 +1,4 @@
-// Prisma schema for Spage landing sync
+// Prisma schema for SyncPage landing sync
 generator client {
   provider = "prisma-client-js"
 }

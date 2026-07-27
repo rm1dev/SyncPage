@@ -71,8 +71,8 @@ curl -sf "$BASE/$SLUG/" | head -n 5
 echo
 
 echo "==> Check edge logs for sync"
-docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=120 app-edge | tee /tmp/spage-edge-logs.txt
-grep -Eq "Landing synced on edge: ${SLUG}" /tmp/spage-edge-logs.txt
+docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=120 app-edge | tee /tmp/syncpage-edge-logs.txt
+grep -Eq "Landing synced on edge: ${SLUG}" /tmp/syncpage-edge-logs.txt
 echo "Edge sync observed in logs"
 
 echo "==> Re-publish same message for idempotency check"
@@ -95,14 +95,14 @@ process.stdout.write(JSON.stringify({
 }));
 ')
 
-curl -sf -u spage:spage -H 'Content-Type: application/json' \
+curl -sf -u syncpage:syncpage -H 'Content-Type: application/json' \
   -X POST "http://localhost:15672/api/exchanges/%2F/amq.default/publish" \
   -d "$NEST_MSG"
 echo
 
 sleep 5
-docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=50 app-edge | tee /tmp/spage-edge-idem.txt
-grep -F "Duplicate sync ignored (idempotent): ${IDEM}" /tmp/spage-edge-idem.txt
+docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=50 app-edge | tee /tmp/syncpage-edge-idem.txt
+grep -F "Duplicate sync ignored (idempotent): ${IDEM}" /tmp/syncpage-edge-idem.txt
 echo "Idempotent duplicate confirmed"
 
 echo

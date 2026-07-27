@@ -2,13 +2,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: spage
-      POSTGRES_PASSWORD: spage
-      POSTGRES_DB: spage
+      POSTGRES_USER: syncpage
+      POSTGRES_PASSWORD: syncpage
+      POSTGRES_DB: syncpage
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U spage -d spage"]
+      test: ["CMD-SHELL", "pg_isready -U syncpage -d syncpage"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -18,8 +18,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: spage
-      RABBITMQ_DEFAULT_PASS: spage
+      RABBITMQ_DEFAULT_USER: syncpage
+      RABBITMQ_DEFAULT_PASS: syncpage
     volumes:
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
@@ -38,9 +38,9 @@ services:
     environment:
       NODE_ROLE: MASTER
       PORT: "3000"
-      DATABASE_URL: postgresql://spage:spage@db:5432/spage?schema=public
-      RABBITMQ_URL: amqp://spage:spage@rabbitmq:5672
-      RABBITMQ_PUBLIC_URL: amqp://spage:spage@localhost:5672
+      DATABASE_URL: postgresql://syncpage:syncpage@db:5432/syncpage?schema=public
+      RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
+      RABBITMQ_PUBLIC_URL: amqp://syncpage:syncpage@localhost:5672
       RABBITMQ_QUEUE: landing.sync
       RABBITMQ_MASTER_QUEUE: form.submission
       ADMIN_TOKEN: change-me-admin-token
@@ -49,8 +49,8 @@ services:
       MASTER_INTERNAL_URL: http://app-master:3000
       PUBLIC_BASE_URL: http://localhost
       OUTBOX_POLL_MS: "3000"
-      SPAGE_GITHUB_REPO: YOUR_GITHUB_USER/spage
-      SPAGE_GITHUB_BRANCH: master
+      SYNCPAGE_GITHUB_REPO: YOUR_GITHUB_USER/SyncPage
+      SYNCPAGE_GITHUB_BRANCH: master
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp
@@ -72,8 +72,8 @@ services:
     environment:
       NODE_ROLE: EDGE
       PORT: "3000"
-      DATABASE_URL: postgresql://spage:spage@db:5432/spage?schema=public
-      RABBITMQ_URL: amqp://spage:spage@rabbitmq:5672
+      DATABASE_URL: postgresql://syncpage:syncpage@db:5432/syncpage?schema=public
+      RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
       RABBITMQ_QUEUE: landing.sync
       RABBITMQ_MASTER_QUEUE: form.submission
       ADMIN_TOKEN: change-me-admin-token

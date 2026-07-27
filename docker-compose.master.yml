@@ -1,18 +1,18 @@
 # =============================================================================
-# Spage Master — production stack
+# SyncPage Master — production stack
 # Usage: docker compose -f docker-compose.master.yml --env-file .env up -d --build
 # =============================================================================
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-spage}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spage}
-      POSTGRES_DB: ${POSTGRES_DB:-spage}
+      POSTGRES_USER: ${POSTGRES_USER:-syncpage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncpage}
+      POSTGRES_DB: ${POSTGRES_DB:-syncpage}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spage} -d ${POSTGRES_DB:-spage}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-syncpage} -d ${POSTGRES_DB:-syncpage}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,8 +21,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-spage}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-spage}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-syncpage}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-syncpage}
     volumes:
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
@@ -44,8 +44,8 @@ services:
     environment:
       NODE_ROLE: MASTER
       PORT: ${APP_PORT:-3000}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-spage}:${POSTGRES_PASSWORD:-spage}@db:5432/${POSTGRES_DB:-spage}?schema=public
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-spage}:${RABBITMQ_PASS:-spage}@rabbitmq:5672
+      DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@db:5432/${POSTGRES_DB:-syncpage}?schema=public
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-syncpage}:${RABBITMQ_PASS:-syncpage}@rabbitmq:5672
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp

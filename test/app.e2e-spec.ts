@@ -22,7 +22,7 @@ describe('HealthController (e2e)', () => {
       .expect(200)
       .expect((res) => {
         expect(res.body.ok).toBe(true);
-        expect(res.body.service).toBe('spage');
+        expect(res.body.service).toBe('syncpage');
       });
   });
 

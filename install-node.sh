@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Spage Edge Node installer — NON-INTERACTIVE
+# SyncPage Edge Node installer — NON-INTERACTIVE
 # Usage (from Admin panel):
-#   bash <(curl -Ls https://raw.githubusercontent.com/USER/spage/master/install-node.sh) \
+#   bash <(curl -Ls https://raw.githubusercontent.com/USER/SyncPage/master/install-node.sh) \
 #     https://MASTER/api/nodes/bootstrap/TOKEN
 # =============================================================================
 set -euo pipefail
@@ -37,7 +37,7 @@ install_docker() {
   systemctl enable --now docker || true
 }
 
-echo -e "${green}Spage Edge Node installer (silent)${plain}"
+echo -e "${green}SyncPage Edge Node installer (silent)${plain}"
 echo -e "Bootstrap: ${BOOTSTRAP_URL}"
 
 need_cmd curl
@@ -74,7 +74,7 @@ DB_NAME="$(parse_json databaseName)"
 DB_USER="$(parse_json databaseUser)"
 DB_PASS="$(parse_json databasePassword)"
 
-INSTALL_DIR="/opt/spage-node"
+INSTALL_DIR="/opt/syncpage-node"
 REPO_URL="https://github.com/${GITHUB_REPO}.git"
 
 echo -e "Node: ${TITLE} (${NODE_ID})"

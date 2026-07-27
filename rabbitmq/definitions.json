@@ -1,8 +1,8 @@
 {
   "users": [
     {
-      "name": "spage",
-      "password": "spage",
+      "name": "syncpage",
+      "password": "syncpage",
       "tags": ["administrator"]
     }
   ],
@@ -13,7 +13,7 @@
   ],
   "permissions": [
     {
-      "user": "spage",
+      "user": "syncpage",
       "vhost": "/",
       "configure": ".*",
       "write": ".*",

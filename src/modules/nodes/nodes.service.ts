@@ -104,7 +104,7 @@ export class NodesService {
     const publicBaseUrl =
       this.config.get<string>('publicBaseUrl') || 'http://localhost';
     const githubRepo =
-      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/spage';
+      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/SyncPage';
     const githubBranch = this.config.get<string>('githubBranch') || 'master';
 
     return {
@@ -121,8 +121,8 @@ export class NodesService {
       publicBaseUrl,
       githubRepo,
       githubBranch,
-      databaseName: `spage_edge_${node.id.slice(0, 8)}`,
-      databaseUser: 'spage',
+      databaseName: `syncpage_edge_${node.id.slice(0, 8)}`,
+      databaseUser: 'syncpage',
       // پسورد DB محلی نود — تصادفی ولی ثابت از توکن (قابل بازتولید نیست، فقط همین بار)
       // واقعاً رندوم می‌ذاریم؛ اسکریپت همون لحظه می‌گیره و توی .env می‌نویسه
       databasePassword: randomBytes(12).toString('hex'),
@@ -198,7 +198,7 @@ export class NodesService {
       this.config.get<string>('publicBaseUrl') || 'http://localhost'
     ).replace(/\/$/, '');
     const githubRepo =
-      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/spage';
+      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/SyncPage';
     const githubBranch = this.config.get<string>('githubBranch') || 'master';
     const scriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/install-node.sh`;
     const bootstrapUrl = `${publicBaseUrl}/api/nodes/bootstrap/${node.installToken}`;

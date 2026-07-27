@@ -59,7 +59,7 @@ async function bootstrap() {
     res.redirect(301, target);
   });
 
-  const rmqUrl = process.env.RABBITMQ_URL || 'amqp://spage:spage@localhost:5672';
+  const rmqUrl = process.env.RABBITMQ_URL || 'amqp://syncpage:syncpage@localhost:5672';
   const started: string[] = [];
 
   if (isEdge()) {
@@ -101,7 +101,7 @@ async function bootstrap() {
   const port = Number(process.env.PORT || 3000);
   await app.listen(port);
   console.log(
-    `Spage running as ${process.env.NODE_ROLE || 'MASTER'} on port ${port}`,
+    `SyncPage running as ${process.env.NODE_ROLE || 'MASTER'} on port ${port}`,
   );
 }
 

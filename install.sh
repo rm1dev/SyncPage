@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Spage Master installer
+# SyncPage Master installer
 # Usage:
-#   bash <(curl -Ls https://raw.githubusercontent.com/USER/spage/master/install.sh)
+#   bash <(curl -Ls https://raw.githubusercontent.com/USER/SyncPage/master/install.sh)
 #   bash <(curl -Ls .../install.sh) v1.0.0   # optional tag/branch
 # =============================================================================
 set -euo pipefail
@@ -14,9 +14,9 @@ blue='\033[0;34m'
 plain='\033[0m'
 
 # ---- defaults (override via env before running) ----
-SPAGE_GITHUB_REPO="${SPAGE_GITHUB_REPO:-YOUR_GITHUB_USER/spage}"
-SPAGE_GITHUB_BRANCH="${1:-${SPAGE_GITHUB_BRANCH:-master}}"
-INSTALL_DIR_DEFAULT="/opt/spage"
+SYNCPAGE_GITHUB_REPO="${SYNCPAGE_GITHUB_REPO:-YOUR_GITHUB_USER/SyncPage}"
+SYNCPAGE_GITHUB_BRANCH="${1:-${SYNCPAGE_GITHUB_BRANCH:-master}}"
+INSTALL_DIR_DEFAULT="/opt/syncpage"
 HTTP_PORT_DEFAULT="80"
 APP_PORT_DEFAULT="3000"
 ADMIN_TOKEN_DEFAULT="$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 32)"
@@ -64,9 +64,9 @@ install_docker() {
 }
 
 echo -e "${green}╔══════════════════════════════════════╗${plain}"
-echo -e "${green}║     Spage Master Installer           ║${plain}"
+echo -e "${green}║     SyncPage Master Installer        ║${plain}"
 echo -e "${green}╚══════════════════════════════════════╝${plain}"
-echo -e "Repo: ${SPAGE_GITHUB_REPO} @ ${SPAGE_GITHUB_BRANCH}"
+echo -e "Repo: ${SYNCPAGE_GITHUB_REPO} @ ${SYNCPAGE_GITHUB_BRANCH}"
 echo ""
 
 PUBLIC_IP="$(detect_public_ip)"
@@ -95,25 +95,25 @@ PUBLIC_BASE_URL="$REPLY"
 prompt "Master internal URL (Edge package download)" "http://${PUBLIC_IP}:${HTTP_PORT}"
 MASTER_INTERNAL_URL="$REPLY"
 
-prompt "RabbitMQ public URL (for Edge nodes)" "amqp://spage:${RMQ_PASS}@${PUBLIC_IP}:5672"
+prompt "RabbitMQ public URL (for Edge nodes)" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:5672"
 RABBITMQ_PUBLIC_URL="$REPLY"
 
-prompt "GitHub repo (owner/name)" "$SPAGE_GITHUB_REPO"
-SPAGE_GITHUB_REPO="$REPLY"
+prompt "GitHub repo (owner/name)" "$SYNCPAGE_GITHUB_REPO"
+SYNCPAGE_GITHUB_REPO="$REPLY"
 
-prompt "GitHub branch/tag" "$SPAGE_GITHUB_BRANCH"
-SPAGE_GITHUB_BRANCH="$REPLY"
+prompt "GitHub branch/tag" "$SYNCPAGE_GITHUB_BRANCH"
+SYNCPAGE_GITHUB_BRANCH="$REPLY"
 
 install_docker
 
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-REPO_URL="https://github.com/${SPAGE_GITHUB_REPO}.git"
+REPO_URL="https://github.com/${SYNCPAGE_GITHUB_REPO}.git"
 if [[ -d .git ]]; then
   echo -e "${yellow}Updating existing repo...${plain}"
   git fetch --all --tags
-  git checkout "$SPAGE_GITHUB_BRANCH" || git checkout -B "$SPAGE_GITHUB_BRANCH" "origin/$SPAGE_GITHUB_BRANCH"
+  git checkout "$SYNCPAGE_GITHUB_BRANCH" || git checkout -B "$SYNCPAGE_GITHUB_BRANCH" "origin/$SYNCPAGE_GITHUB_BRANCH"
   git pull --ff-only || true
 else
   if [[ -n "$(ls -A . 2>/dev/null || true)" ]]; then
@@ -121,7 +121,7 @@ else
     exit 1
   fi
   echo -e "${yellow}Cloning ${REPO_URL} ...${plain}"
-  git clone --branch "$SPAGE_GITHUB_BRANCH" --depth 1 "$REPO_URL" .
+  git clone --branch "$SYNCPAGE_GITHUB_BRANCH" --depth 1 "$REPO_URL" .
 fi
 
 # .env برای Master
@@ -130,14 +130,14 @@ NODE_ROLE=MASTER
 PORT=${APP_PORT}
 NODE_ENV=production
 
-POSTGRES_USER=spage
+POSTGRES_USER=syncpage
 POSTGRES_PASSWORD=${DB_PASS}
-POSTGRES_DB=spage
-DATABASE_URL=postgresql://spage:${DB_PASS}@db:5432/spage?schema=public
+POSTGRES_DB=syncpage
+DATABASE_URL=postgresql://syncpage:${DB_PASS}@db:5432/syncpage?schema=public
 
-RABBITMQ_USER=spage
+RABBITMQ_USER=syncpage
 RABBITMQ_PASS=${RMQ_PASS}
-RABBITMQ_URL=amqp://spage:${RMQ_PASS}@rabbitmq:5672
+RABBITMQ_URL=amqp://syncpage:${RMQ_PASS}@rabbitmq:5672
 RABBITMQ_PUBLIC_URL=${RABBITMQ_PUBLIC_URL}
 RABBITMQ_QUEUE=landing.sync
 RABBITMQ_MASTER_QUEUE=form.submission
@@ -153,8 +153,8 @@ PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 OUTBOX_POLL_MS=3000
 OUTBOX_MAX_ATTEMPTS=10
 
-SPAGE_GITHUB_REPO=${SPAGE_GITHUB_REPO}
-SPAGE_GITHUB_BRANCH=${SPAGE_GITHUB_BRANCH}
+SYNCPAGE_GITHUB_REPO=${SYNCPAGE_GITHUB_REPO}
+SYNCPAGE_GITHUB_BRANCH=${SYNCPAGE_GITHUB_BRANCH}
 
 HTTP_PORT=${HTTP_PORT}
 APP_PORT=${APP_PORT}
@@ -165,7 +165,7 @@ docker compose -f docker-compose.master.yml --env-file .env up -d --build
 
 echo ""
 echo -e "${green}════════════════════════════════════════${plain}"
-echo -e "${green}Spage Master installed successfully${plain}"
+echo -e "${green}SyncPage Master installed successfully${plain}"
 echo -e "${green}════════════════════════════════════════${plain}"
 echo -e "Panel:       ${PUBLIC_BASE_URL}/admin"
 echo -e "Admin token: ${ADMIN_TOKEN}"

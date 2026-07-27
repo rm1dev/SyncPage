@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Spage Admin JavaScript - Interactive UI Utilities
+   SyncPage Admin JavaScript - Interactive UI Utilities
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {

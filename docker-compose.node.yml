@@ -1,18 +1,18 @@
 # =============================================================================
-# Spage Edge Node — production stack (no local RabbitMQ)
+# SyncPage Edge Node — production stack (no local RabbitMQ)
 # Usage: docker compose -f docker-compose.node.yml --env-file .env up -d --build
 # =============================================================================
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-spage}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spage}
-      POSTGRES_DB: ${POSTGRES_DB:-spage_edge}
+      POSTGRES_USER: ${POSTGRES_USER:-syncpage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syncpage}
+      POSTGRES_DB: ${POSTGRES_DB:-syncpage_edge}
     volumes:
       - pgdata_edge:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spage} -d ${POSTGRES_DB:-spage_edge}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-syncpage} -d ${POSTGRES_DB:-syncpage_edge}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,7 +25,7 @@ services:
       NODE_ROLE: EDGE
       PORT: ${APP_PORT:-3000}
       EDGE_NODE_ID: ${EDGE_NODE_ID:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-spage}:${POSTGRES_PASSWORD:-spage}@db:5432/${POSTGRES_DB:-spage_edge}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@db:5432/${POSTGRES_DB:-syncpage_edge}?schema=public
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp

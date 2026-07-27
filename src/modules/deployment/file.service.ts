@@ -50,7 +50,7 @@ export class FileService {
   }
 
   checksumDirMarker(slug: string, version: number, checksum: string) {
-    const marker = join(this.staticRoot, slug, '.spage-meta.json');
+    const marker = join(this.staticRoot, slug, '.syncpage-meta.json');
     writeFileSync(
       marker,
       JSON.stringify({ slug, version, checksum, at: new Date().toISOString() }),

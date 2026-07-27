@@ -9,7 +9,7 @@ export class HealthController {
     return {
       ok: true,
       role,
-      service: 'spage',
+      service: 'syncpage',
       ...(nodeId ? { nodeId } : {}),
       ts: new Date().toISOString(),
     };
