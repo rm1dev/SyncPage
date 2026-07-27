@@ -1,0 +1,96 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <h1>بارگذاری و استقرار لندینگ</h1>
+    <span class="subtitle">مراحل آپلود پکیج ZIP، پیش‌نمایش زنده و استقرار نهایی در شبکه</span>
+  </div>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+{{#if flash}}
+  <div class="alert alert-ok">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <span>{{flash}}</span>
+  </div>
+{{/if}}
+
+<!-- Stepper Steps -->
+<div class="stepper">
+  <div class="step-item active">
+    <div class="step-number">۱</div>
+    <div class="step-label">بارگذاری فایل ZIP</div>
+  </div>
+  <div class="step-item {{#if previewId}}active{{/if}}">
+    <div class="step-number">۲</div>
+    <div class="step-label">پیش‌نمایش زنده</div>
+  </div>
+  <div class="step-item {{#if previewId}}active{{/if}}">
+    <div class="step-number">۳</div>
+    <div class="step-label">استقرار نهایی</div>
+  </div>
+</div>
+
+<!-- Step 1: Upload Form -->
+<div class="content-wrapper">
+  <div class="section-header">
+    <span>۱. انتخاب و آپلود فایل ZIP لندینگ</span>
+  </div>
+  <form id="upload-form" method="post" action="/admin/deploy/upload" enctype="multipart/form-data">
+    <div class="form-group">
+      <label class="form-label" for="slug">اسلاگ لندینگ (Slug)</label>
+      <input class="form-control" id="slug" name="slug" required pattern="[a-zA-Z0-9-_]+" placeholder="مثلاً: product-launch" value="{{slug}}" />
+    </div>
+
+    <label for="zip-upload" class="upload-area">
+      <div class="upload-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <p>فایل ZIP حاوی <code>index.html</code> را کشیده و اینجا رها کنید یا کلیک کنید</p>
+      <span class="sub-text">حداکثر حجم قابل قبول: ۱۰۰ مگابایت</span>
+      <input type="file" id="zip-upload" name="file" accept=".zip" required />
+    </label>
+
+    <div class="mt-2 text-left">
+      <button type="submit" class="btn btn-secondary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>آپلود و پیش‌نمایش</span>
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Step 2 & 3: Preview and Confirmation -->
+{{#if previewId}}
+<div class="content-wrapper mt-3">
+  <div class="section-header">
+    <span>۲. پیش‌نمایش زنده لندینگ</span>
+    <span class="status-pill">Checksum: <code>{{checksum}}</code></span>
+  </div>
+  <div class="preview-container">
+    <iframe class="preview-frame" src="{{previewUrl}}" title="پیش‌نمایش لندینگ"></iframe>
+  </div>
+</div>
+
+<div class="content-wrapper mt-3">
+  <div class="section-header">
+    <span>۳. تایید و استقرار نهایی در شبکه</span>
+  </div>
+  <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+    با تایید این مرحله، فایل‌های لندینگ در پوشه <code>static_pages</code> جایگزین شده و رویداد همگام‌سازی برای گره‌های Edge در صف ارسال قرار می‌گیرد.
+  </p>
+  <form method="post" action="/admin/deploy/confirm">
+    <input type="hidden" name="previewId" value="{{previewId}}" />
+    <input type="hidden" name="slug" value="{{slug}}" />
+    <div class="text-left">
+      <button type="submit" class="btn btn-primary btn-lg">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>تایید و استقرار نهایی</span>
+      </button>
+    </div>
+  </form>
+</div>
+{{/if}}

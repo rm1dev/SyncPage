@@ -1,0 +1,23 @@
+<div class="login-card">
+  <div class="login-logo">S</div>
+  <h1>ورود به پنل مدیریت</h1>
+  <p class="subtitle">جهت دسترسی به سیستم مدیریت Spage توکن خود را وارد کنید</p>
+
+  {{#if error}}
+    <div class="alert alert-error">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span>{{error}}</span>
+    </div>
+  {{/if}}
+
+  <form method="post" action="/admin/login">
+    <div class="form-group text-left">
+      <label class="form-label" for="token">کلید دسترسی (ADMIN_TOKEN)</label>
+      <input class="form-control" id="token" name="token" type="password" placeholder="••••••••••••••••" required />
+    </div>
+    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+      <span>ورود به سیستم</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </form>
+</div>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{title}} — پنل مدیریت Spage</title>
+  <!-- CSS اختصاصی همراه با فونت محلی وزیرمتن (Vazirmatn) -->
+  <link rel="stylesheet" href="/public/admin/admin.css" />
+</head>
+<body class="{{#if (eq active 'login')}}login-body{{/if}}">
+  {{#if (eq active 'login')}}
+    {{{body}}}
+  {{else}}
+    <div class="admin-container">
+      {{> sidebar}}
+      <main class="main-content">
+        {{{body}}}
+      </main>
+    </div>
+  {{/if}}
+
+  <div id="toast-container"></div>
+  <script src="/public/admin/admin.js"></script>
+</body>
+</html>

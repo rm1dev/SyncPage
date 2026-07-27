@@ -1,0 +1,97 @@
+{
+  "users": [
+    {
+      "name": "spage",
+      "password": "spage",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "spage",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "queues": [
+    {
+      "name": "landing.sync",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "landing.sync.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "form.submission",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "landing.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "landing.exchange",
+      "vhost": "/",
+      "destination": "landing.sync",
+      "destination_type": "queue",
+      "routing_key": "landing.sync",
+      "arguments": {}
+    },
+    {
+      "source": "landing.exchange",
+      "vhost": "/",
+      "destination": "landing.sync",
+      "destination_type": "queue",
+      "routing_key": "form.sync",
+      "arguments": {}
+    },
+    {
+      "source": "landing.exchange",
+      "vhost": "/",
+      "destination": "landing.sync.dlq",
+      "destination_type": "queue",
+      "routing_key": "landing.sync.failed",
+      "arguments": {}
+    },
+    {
+      "source": "landing.exchange",
+      "vhost": "/",
+      "destination": "form.submission",
+      "destination_type": "queue",
+      "routing_key": "form.submission.sync",
+      "arguments": {}
+    }
+  ],
+  "parameters": [],
+  "policies": []
+}

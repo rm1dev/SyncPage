@@ -1,0 +1,97 @@
+// Prisma schema for Spage landing sync
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LandingStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Form {
+  id          String           @id @default(uuid())
+  title       String
+  key         String           @unique
+  slug        String           @unique
+  body        Json
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  submissions FormSubmission[]
+}
+
+model FormSubmission {
+  id        String   @id @default(uuid())
+  formId    String
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([formId])
+}
+
+model Landing {
+  id        String        @id @default(uuid())
+  slug      String        @unique
+  version   Int           @default(1)
+  checksum  String
+  status    LandingStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model OutboxEvent {
+  id             String       @id @default(uuid())
+  eventType      String
+  payload        Json
+  status         OutboxStatus @default(PENDING)
+  attempts       Int          @default(0)
+  idempotencyKey String       @unique
+  lastError      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model ProcessedEvent {
+  idempotencyKey String   @id
+  processedAt    DateTime @default(now())
+}
+
+enum EdgeNodeStatus {
+  PENDING
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+// نودهای Edge که از پنل مدیریت ثبت می‌شن
+model EdgeNode {
+  id           String         @id @default(uuid())
+  title        String
+  host         String
+  port         Int            @default(3000)
+  queueName    String         @unique
+  installToken String         @unique
+  status       EdgeNodeStatus @default(PENDING)
+  lastSeenAt   DateTime?
+  lastError    String?
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status])
+}

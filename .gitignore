@@ -1,0 +1,21 @@
+# compiled
+/dist
+/node_modules
+/coverage
+
+# env & local
+.env
+.env.local
+
+# runtime data
+/temp
+/static_pages/*
+!/static_pages/.gitkeep
+
+# logs & OS
+*.log
+.DS_Store
+
+# IDE
+.idea
+.vscode

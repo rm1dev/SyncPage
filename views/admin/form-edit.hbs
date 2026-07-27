@@ -1,0 +1,63 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <h1>{{#if form}}ویرایش فرم: {{form.title}}{{else}}ایجاد فرم جدید{{/if}}</h1>
+    <span class="subtitle">تنظیمات متاداده و ساختار فیلدهای فرم به صورت JSON</span>
+  </div>
+  <a href="/admin" class="btn btn-secondary">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <span>بازگشت به داشبورد</span>
+  </a>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+
+<form method="post" action="{{#if form}}/admin/forms/{{form.id}}{{else}}/admin/forms{{/if}}" class="content-wrapper">
+  <div class="section-header">
+    <span>۱. تنظیمات عمومی فرم</span>
+  </div>
+
+  <div class="grid-2">
+    <div class="form-group text-left">
+      <label class="form-label" for="title">عنوان فرم</label>
+      <input class="form-control" id="title" name="title" placeholder="مثلاً: فرم ثبت نام مشتریان" required value="{{form.title}}" />
+    </div>
+
+    <div class="form-group text-left">
+      <label class="form-label" for="key">کلید یکتا (برای فراخوانی API)</label>
+      <input class="form-control" id="key" name="key" placeholder="مثلاً: user_signup_form" required value="{{form.key}}" {{#if form}}readonly style="opacity: 0.7;"{{/if}} />
+    </div>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="slug">اسلاگ صفحه (Slug)</label>
+    <input class="form-control" id="slug" name="slug" placeholder="مثلاً: signup" required value="{{form.slug}}" />
+  </div>
+
+  <div class="section-header mt-2">
+    <span>۲. ساختار فیلدها (فرمت JSON)</span>
+    <button type="button" id="format-json-btn" class="btn btn-subtle">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+      <span>مرتب‌سازی و اعتبارسنجی JSON</span>
+    </button>
+  </div>
+  <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">
+    آرایه‌ای از اشیاء فیلد شامل <code>type</code>، <code>name</code>، <code>label</code>، <code>required</code> و <code>options</code>
+  </p>
+
+  <div class="form-group text-left">
+    <textarea class="form-control" id="body" name="body" rows="14" required>{{bodyJson}}</textarea>
+  </div>
+
+  <div class="text-left mt-2" style="display: flex; gap: 1rem;">
+    <button type="submit" class="btn btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span>ذخیره فرم</span>
+    </button>
+    <a href="/admin" class="btn btn-secondary">انصراف</a>
+  </div>
+</form>

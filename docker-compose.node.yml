@@ -1,0 +1,47 @@
+# =============================================================================
+# Spage Edge Node — production stack (no local RabbitMQ)
+# Usage: docker compose -f docker-compose.node.yml --env-file .env up -d --build
+# =============================================================================
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spage}
+      POSTGRES_DB: ${POSTGRES_DB:-spage_edge}
+    volumes:
+      - pgdata_edge:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spage} -d ${POSTGRES_DB:-spage_edge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      NODE_ROLE: EDGE
+      PORT: ${APP_PORT:-3000}
+      EDGE_NODE_ID: ${EDGE_NODE_ID:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-spage}:${POSTGRES_PASSWORD:-spage}@db:5432/${POSTGRES_DB:-spage_edge}?schema=public
+    volumes:
+      - static_pages:/app/static_pages
+      - temp_data:/app/temp
+    ports:
+      - "${HTTP_PORT:-3000}:${APP_PORT:-3000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-3000}/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  pgdata_edge:
+  static_pages:
+  temp_data:

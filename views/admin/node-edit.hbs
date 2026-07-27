@@ -1,0 +1,45 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <h1>افزودن نود Edge</h1>
+    <span class="subtitle">پس از ذخیره، یک کامند نصب بدون سوال دریافت می‌کنید</span>
+  </div>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+
+<div class="content-wrapper">
+  <form method="post" action="/admin/nodes">
+    <div class="form-group">
+      <label class="form-label" for="title">عنوان نود</label>
+      <input class="form-control" id="title" name="title" required placeholder="مثلاً: Edge تهران" value="{{node.title}}" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="host">آدرس IP یا Hostname</label>
+      <input class="form-control" id="host" name="host" required placeholder="مثلاً: 10.0.0.12 یا edge1.example.com" value="{{node.host}}" />
+      <span class="form-hint">Master با این آدرس برای Verify به نود وصل می‌شود</span>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="port">پورت HTTP نود</label>
+      <input class="form-control" id="port" name="port" type="number" min="1" max="65535" value="{{node.port}}" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="notes">یادداشت (اختیاری)</label>
+      <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="محل فیزیکی، CDN و ...">{{node.notes}}</textarea>
+    </div>
+
+    <div class="mt-2" style="display:flex; gap:0.75rem;">
+      <button type="submit" class="btn btn-primary">
+        <span>ذخیره و ساخت کامند نصب</span>
+      </button>
+      <a href="/admin/nodes" class="btn btn-secondary"><span>انصراف</span></a>
+    </div>
+  </form>
+</div>

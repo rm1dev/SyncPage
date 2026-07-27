@@ -1,0 +1,119 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spage
+      POSTGRES_PASSWORD: spage
+      POSTGRES_DB: spage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spage -d spage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: spage
+      RABBITMQ_DEFAULT_PASS: spage
+    volumes:
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rmqdata:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  app-master:
+    build: .
+    environment:
+      NODE_ROLE: MASTER
+      PORT: "3000"
+      DATABASE_URL: postgresql://spage:spage@db:5432/spage?schema=public
+      RABBITMQ_URL: amqp://spage:spage@rabbitmq:5672
+      RABBITMQ_PUBLIC_URL: amqp://spage:spage@localhost:5672
+      RABBITMQ_QUEUE: landing.sync
+      RABBITMQ_MASTER_QUEUE: form.submission
+      ADMIN_TOKEN: change-me-admin-token
+      STATIC_PAGES_PATH: /app/static_pages
+      TEMP_PATH: /app/temp
+      MASTER_INTERNAL_URL: http://app-master:3000
+      PUBLIC_BASE_URL: http://localhost
+      OUTBOX_POLL_MS: "3000"
+      SPAGE_GITHUB_REPO: YOUR_GITHUB_USER/spage
+      SPAGE_GITHUB_BRANCH: master
+    volumes:
+      - static_pages:/app/static_pages
+      - temp_data:/app/temp
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app-edge:
+    build: .
+    environment:
+      NODE_ROLE: EDGE
+      PORT: "3000"
+      DATABASE_URL: postgresql://spage:spage@db:5432/spage?schema=public
+      RABBITMQ_URL: amqp://spage:spage@rabbitmq:5672
+      RABBITMQ_QUEUE: landing.sync
+      RABBITMQ_MASTER_QUEUE: form.submission
+      ADMIN_TOKEN: change-me-admin-token
+      STATIC_PAGES_PATH: /app/static_pages
+      TEMP_PATH: /app/temp
+      MASTER_INTERNAL_URL: http://app-master:3000
+      PUBLIC_BASE_URL: http://localhost
+    volumes:
+      - static_pages:/app/static_pages
+      - temp_data:/app/temp
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      app-master:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_pages:/static_pages:ro
+    ports:
+      - "80:80"
+    depends_on:
+      app-master:
+        condition: service_healthy
+      app-edge:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  rmqdata:
+  static_pages:
+  temp_data:

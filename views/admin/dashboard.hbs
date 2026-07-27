@@ -1,0 +1,140 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle Sidebar">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <h1>داشبورد مدیریت</h1>
+    </div>
+    <span class="subtitle">نمای کلی از فرم‌ها و صفحات لندینگ مستقر شده</span>
+  </div>
+  <a href="/admin/forms/new" class="btn btn-primary">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span>ساخت فرم جدید</span>
+  </a>
+</header>
+
+{{#if flash}}
+  <div class="alert alert-ok">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <span>{{flash}}</span>
+  </div>
+{{/if}}
+
+<!-- Stats KPI Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label">تعداد فرم‌ها</span>
+      <span class="stat-value">{{forms.length}}</span>
+    </div>
+    <div class="stat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label">لندینگ‌های فعال</span>
+      <span class="stat-value">{{landings.length}}</span>
+    </div>
+    <div class="stat-icon" style="background: rgba(99, 102, 241, 0.12); color: #818cf8;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label">نودهای Edge</span>
+      <span class="stat-value">{{onlineCount}} / {{nodeCount}}</span>
+    </div>
+    <div class="stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- Forms Table -->
+<div class="content-wrapper">
+  <div class="section-header">
+    <span>فرم‌های موجود در سیستم</span>
+    <span class="status-pill">{{forms.length}} فرم</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>عنوان فرم</th>
+          <th>کلید یکتا (Key)</th>
+          <th>اسلاگ</th>
+          <th>تعداد فیلدها</th>
+          <th class="actions">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each forms}}
+        <tr>
+          <td style="font-weight: 600;">{{title}}</td>
+          <td><code>{{key}}</code></td>
+          <td>{{slug}}</td>
+          <td><span class="status-pill" style="background: rgba(255,255,255,0.06); color: var(--text-main);">{{fieldCount}} فیلد</span></td>
+          <td class="actions">
+            <a href="/admin/forms/{{id}}" class="btn-subtle">
+              <span>ویرایش فرم</span>
+            </a>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+            هنوز فرمی در سیستم ثبت نشده است.
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Landings Table -->
+<div class="content-wrapper">
+  <div class="section-header">
+    <span>لندینگ‌های مستقر شده</span>
+    <span class="status-pill" style="background: rgba(99, 102, 241, 0.12); color: #818cf8;">{{landings.length}} لندینگ</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>اسلاگ لندینگ</th>
+          <th>نسخه</th>
+          <th>وضعیت</th>
+          <th>Checksum</th>
+          <th class="actions">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each landings}}
+        <tr>
+          <td style="font-weight: 600;">{{slug}}</td>
+          <td><code>v{{version}}</code></td>
+          <td><span class="status-pill">{{status}}</span></td>
+          <td><code>{{checksumShort}}</code></td>
+          <td class="actions">
+            <a href="/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener">
+              <span>مشاهده لندینگ</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+            هنوز لندینگی مستقر نشده است.
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
