@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
 # SyncPage Edge Node installer — NON-INTERACTIVE
-# Usage (from Admin panel):
-#   bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh) \
-#     https://MASTER/api/nodes/bootstrap/TOKEN
+# Usage (from Admin panel — works with sudo):
+#   curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh \
+#     | sudo bash -s -- https://MASTER/api/nodes/bootstrap/TOKEN
 # =============================================================================
 set -euo pipefail
 
@@ -12,12 +12,17 @@ green='\033[0;32m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
-[[ $EUID -ne 0 ]] && echo -e "${red}Fatal: run as root${plain}" && exit 1
+if [[ ${EUID} -ne 0 ]]; then
+  echo -e "${red}Fatal: run as root${plain}" >&2
+  echo "Example:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh | sudo bash -s -- <bootstrap-url>" >&2
+  exit 1
+fi
 
 BOOTSTRAP_URL="${1:-}"
 if [[ -z "$BOOTSTRAP_URL" ]]; then
-  echo -e "${red}Usage: $0 <bootstrap-url>${plain}"
-  echo "Example: bash <(curl -Ls .../install-node.sh) https://master/api/nodes/bootstrap/TOKEN"
+  echo -e "${red}Usage: curl -fsSL .../install-node.sh | sudo bash -s -- <bootstrap-url>${plain}"
+  echo "Example: curl -fsSL .../install-node.sh | sudo bash -s -- https://master/api/nodes/bootstrap/TOKEN"
   exit 1
 fi
 

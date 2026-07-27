@@ -16,12 +16,21 @@ NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 ### Master Node
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s --
 # Or targeting a specific tag/branch:
-bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh) main
+curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s -- main
 ```
 
-The script will prompt for setup details (with sensible defaults): installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
+> Do **not** use `sudo bash <(curl ...)` — process substitution breaks under `sudo` (`/dev/fd/...: No such file or directory`).
+
+When run via pipe, the installer applies defaults automatically. For interactive prompts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh -o /tmp/syncpage-install.sh
+sudo bash /tmp/syncpage-install.sh
+```
+
+The script configures: installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
 
 After installation:
 
@@ -36,8 +45,8 @@ After installation:
 2. Copy the installation command — **runs fully automated (unattended)**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh) \
-  https://MASTER_URL/api/nodes/bootstrap/TOKEN
+curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh \
+  | sudo bash -s -- https://MASTER_URL/api/nodes/bootstrap/TOKEN
 ```
 
 3. Once installed, click **Verify** in the Admin Panel to mark the node status as `ONLINE`.

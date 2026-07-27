@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
 # SyncPage Master installer
-# Usage:
-#   bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
-#   bash <(curl -Ls .../install.sh) v1.0.0   # optional tag/branch
+# Usage (recommended — works with sudo):
+#   curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s --
+#   curl -fsSL .../install.sh | sudo bash -s -- main   # optional tag/branch
+# Interactive (prompts on a TTY):
+#   curl -fsSL .../install.sh -o /tmp/syncpage-install.sh
+#   sudo bash /tmp/syncpage-install.sh
 # =============================================================================
 set -euo pipefail
 
@@ -13,22 +16,47 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 plain='\033[0m'
 
+# اول root رو چک کن — قبل از هر چیزی که ممکنه با set -e بی‌صدا بترکه
+if [[ ${EUID} -ne 0 ]]; then
+  echo -e "${red}Fatal: run as root${plain}" >&2
+  echo "Example:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s --" >&2
+  exit 1
+fi
+
+# هگز تصادفی بدون وابستگی به xxd (روی خیلی از اوبونتوهای مینیمال نیست)
+rand_hex() {
+  local bytes="$1"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$bytes"
+    return 0
+  fi
+  if command -v xxd >/dev/null 2>&1; then
+    head -c "$bytes" /dev/urandom | xxd -p -c "$bytes"
+    return 0
+  fi
+  if command -v hexdump >/dev/null 2>&1; then
+    head -c "$bytes" /dev/urandom | hexdump -ve '1/1 "%02x"'
+    return 0
+  fi
+  head -c "$bytes" /dev/urandom | od -An -tx1 | tr -d ' \n'
+}
+
 # ---- defaults (override via env before running) ----
 SYNCPAGE_GITHUB_REPO="${SYNCPAGE_GITHUB_REPO:-rm1dev/SyncPage}"
 SYNCPAGE_GITHUB_BRANCH="${1:-${SYNCPAGE_GITHUB_BRANCH:-main}}"
 INSTALL_DIR_DEFAULT="/opt/syncpage"
 HTTP_PORT_DEFAULT="80"
 APP_PORT_DEFAULT="3000"
-ADMIN_TOKEN_DEFAULT="$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 32)"
-DB_PASS_DEFAULT="$(openssl rand -hex 12 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 16)"
-RMQ_PASS_DEFAULT="$(openssl rand -hex 12 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 16)"
-
-[[ $EUID -ne 0 ]] && echo -e "${red}Fatal: run as root${plain}" && exit 1
+ADMIN_TOKEN_DEFAULT="$(rand_hex 16)"
+DB_PASS_DEFAULT="$(rand_hex 12)"
+RMQ_PASS_DEFAULT="$(rand_hex 12)"
 
 prompt() {
   # prompt "Question" "default" → sets REPLY
   local q="$1"
   local d="${2:-}"
+  # وقتی از pipe میاد (curl | bash)، stdin اسکریپته — فقط default
   if [[ "${NONINTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
     REPLY="$d"
     echo -e "${blue}${q}${plain}: ${yellow}${REPLY}${plain} (default)"
