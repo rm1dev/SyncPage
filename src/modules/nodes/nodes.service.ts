@@ -202,8 +202,8 @@ export class NodesService {
     const githubBranch = this.config.get<string>('githubBranch') || 'main';
     const scriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/install-node.sh`;
     const bootstrapUrl = `${publicBaseUrl}/api/nodes/bootstrap/${node.installToken}`;
-    // کامند silent با pipe — با sudo هم درست کار می‌کنه (process substitution نه)
-    const installCommand = `curl -fsSL ${scriptUrl} | sudo bash -s -- ${bootstrapUrl}`;
+    // کامند silent — بدون سوال
+    const installCommand = `bash <(curl -Ls ${scriptUrl}) ${bootstrapUrl}`;
 
     return { ...node, installCommand, bootstrapUrl };
   }

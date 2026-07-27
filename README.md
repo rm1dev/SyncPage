@@ -11,26 +11,19 @@ NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 
 ---
 
+
+
 ## Quick Installation (Production)
+
+
 
 ### Master Node
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s --
-# Or targeting a specific tag/branch:
-curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh | sudo bash -s -- main
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
 ```
 
-> Do **not** use `sudo bash <(curl ...)` — process substitution breaks under `sudo` (`/dev/fd/...: No such file or directory`).
-
-When run via pipe, the installer applies defaults automatically. For interactive prompts:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh -o /tmp/syncpage-install.sh
-sudo bash /tmp/syncpage-install.sh
-```
-
-The script configures: installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
+The script will prompt for setup details (with sensible defaults): installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
 
 After installation:
 
@@ -45,11 +38,11 @@ After installation:
 2. Copy the installation command — **runs fully automated (unattended)**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh \
-  | sudo bash -s -- https://MASTER_URL/api/nodes/bootstrap/TOKEN
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh) \
+  https://MASTER_URL/api/nodes/bootstrap/TOKEN
 ```
 
-3. Once installed, click **Verify** in the Admin Panel to mark the node status as `ONLINE`.
+1. Once installed, click **Verify** in the Admin Panel to mark the node status as `ONLINE`.
 
 Each node maintains a dedicated queue (`landing.sync.<id>`); the Master node broadcasts events to **all** registered nodes.
 
@@ -206,14 +199,14 @@ When nodes are registered via the Admin Panel, each Edge receives its own dedica
 ## Key Environment Variables
 
 
-| Variable              | Master                                      | Edge                                |
-| --------------------- | ------------------------------------------- | ----------------------------------- |
-| `NODE_ROLE`           | `MASTER`                                    | `EDGE`                              |
-| `EDGE_NODE_ID`        | —                                           | Provided by Admin Panel / Bootstrap |
-| `RABBITMQ_PUBLIC_URL` | Used for node bootstrap                     | —                                   |
-| `PUBLIC_BASE_URL`     | Used in installation scripts                | —                                   |
-| `SYNCPAGE_GITHUB_REPO`| Repository source for `install-node` script | —                                   |
-| `ADMIN_TOKEN`         | Required                                    | Not required                        |
+| Variable               | Master                                      | Edge                                |
+| ---------------------- | ------------------------------------------- | ----------------------------------- |
+| `NODE_ROLE`            | `MASTER`                                    | `EDGE`                              |
+| `EDGE_NODE_ID`         | —                                           | Provided by Admin Panel / Bootstrap |
+| `RABBITMQ_PUBLIC_URL`  | Used for node bootstrap                     | —                                   |
+| `PUBLIC_BASE_URL`      | Used in installation scripts                | —                                   |
+| `SYNCPAGE_GITHUB_REPO` | Repository source for `install-node` script | —                                   |
+| `ADMIN_TOKEN`          | Required                                    | Not required                        |
 
 
 ---
