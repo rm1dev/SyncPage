@@ -1,111 +1,109 @@
-# SyncPage — سامانه مدیریت لندینگ‌پیج توزیع‌شده
+# SyncPage — Distributed Landing Page Management System
 
-NestJS + PostgreSQL + RabbitMQ (+ Nginx در compose محلی) با دو نقش:
+NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 
 
-| نقش کاربر  | `NODE_ROLE`                           | کار اصلی                                                                           |
-| ---------- | ------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Master** | `MASTER`                              | پنل ادمین، CRUD فرم، آپلود/confirm ZIP، Outbox → Edge، مصرف سابمیشن‌های Edge       |
-| **Edge**   | `EDGE` (یا `SLAVE` برای سازگاری موقت) | سرو لندینگ، ثبت فرم محلی، مصرف `landing.sync`/`form.sync`، Outbox سابمیشن → Master |
+| User Role  | `NODE_ROLE`                                              | Main Responsibility                                                                                          |
+| ---------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Master** | `MASTER`                                                 | Admin Panel, Form CRUD, Upload/Confirm ZIP, Outbox → Edge, Consume Edge Submissions                          |
+| **Edge**   | `EDGE` (or `SLAVE` for temporary backward compatibility) | Serve Landing Pages, Local Form Submissions, Consume `landing.sync`/`form.sync`, Outbox Submissions → Master |
 
 
 ---
 
-## نصب سریع (پروداکشن)
+## Quick Installation (Production)
 
-> قبل از هر چیز `SYNCPAGE_GITHUB_REPO` را روی ریپوی واقعی خودتان ست کنید (یا موقع نصب جواب دهید).
-
-### Master
+### Master Node
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/master/install.sh)
-# یا با تگ/برنچ مشخص:
-bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/master/install.sh) master
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
+# Or targeting a specific tag/branch:
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh) main
 ```
 
-اسکریپت با **پاسخ پیش‌فرض** این‌ها را می‌پرسد: مسیر نصب، پورت HTTP، توکن ادمین، پسورد Postgres/RabbitMQ، `PUBLIC_BASE_URL`، `MASTER_INTERNAL_URL`، `RABBITMQ_PUBLIC_URL`.
+The script will prompt for setup details (with sensible defaults): installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
 
-بعد از نصب:
+After installation:
 
-- پنل: `http://SERVER/admin`
-- توکن ادمین در خروجی اسکریپت چاپ می‌شود
+- Admin Panel: `http://SERVER/admin`
+- The admin token will be printed in the script output.
 
 
 
-### Edge (نود)
+### Edge Node
 
-1. در پنل: **مدیریت نودها → افزودن نود** (عنوان، IP/hostname، پورت، …)
-2. کامند نصب را کپی کنید — **هیچ سوالی نمی‌پرسد**:
+1. In the Master Admin Panel: navigate to **Node Management → Add Node** (title, IP/hostname, port, etc.)
+2. Copy the installation command — **runs fully automated (unattended)**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/YOUR_GITHUB_USER/SyncPage/master/install-node.sh) \
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh) \
   https://MASTER_URL/api/nodes/bootstrap/TOKEN
 ```
 
-1. بعد از نصب، در پنل روی **Verify** بزنید تا وضعیت نود `ONLINE` شود.
+3. Once installed, click **Verify** in the Admin Panel to mark the node status as `ONLINE`.
 
-هر نود صف اختصاصی `landing.sync.<id>` دارد؛ Master رویدادها را به **همه** نودهای ثبت‌شده می‌فرستد.
+Each node maintains a dedicated queue (`landing.sync.<id>`); the Master node broadcasts events to **all** registered nodes.
 
 ---
 
 
 
-## ۱. نمای کلی توپولوژی
+## 1. System Architecture & Topology
 
 ```
-┌──────────────── Master (سرور مرکزی) ────────────────┐
-│  Admin + API  │  Outbox → Edge  │  ZIP packages      │
-│  PostgreSQL   │  RabbitMQ       │  consumer سابمیشن  │
-│  Nodes panel  │  per-node queues│  Verify health     │
-└───────┬───────────────────┬─────────────────────────┘
+┌──────────────────────── Master Node (Central) ────────────────────────┐
+│  Admin + API  │  Outbox → Edge  │  ZIP packages                       │
+│  PostgreSQL   │  RabbitMQ       │  Submission Consumer                │
+│  Nodes Panel  │  per-node queues│  Health Verification                │
+└───────┬───────────────────────────┬───────────────────────────────────┘
         │ landing.sync / form.sync    │ form.submission
         ▼                             ▲
    queue landing.sync.<node>   queue form.submission
         │                             │
         ▼                             │
-┌──────────────── Edge (سرور جدا / CDN) ──────────────┐
-│  consumer لندینگ+فرم │ submit محلی │ Outbox سابمیشن │
-│  PostgreSQL Edge (Form, FormSubmission, Landing…)   │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────── Edge Node (Separate Server / CDN) ───────────┐
+│  Landing + Form Consumer │ Local Submissions │ Submission Outbox    │
+│  PostgreSQL Edge (Form, FormSubmission, Landing…)                    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-- لندینگ و **ثبت فرم** روی Edge انجام می‌شود.
-- تعریف فرم با `form.sync` از Master به Edge می‌آید؛ سابمیشن با `form.submission.sync` به Master برمی‌گردد.
-- Edge باید مستقیماً به RabbitMQِ Master وصل شود (`RABBITMQ_PUBLIC_URL`).
+- Landing pages and **Form Submissions** are processed directly on Edge nodes.
+- Form definitions are pushed from Master to Edge via `form.sync`; submissions are returned to Master via `form.submission.sync`.
+- Edge nodes must connect directly to the Master's RabbitMQ broker (`RABBITMQ_PUBLIC_URL`).
 
 ---
 
 
 
-## ۲. محلی / توسعه (کوتاه)
+## 2. Local / Development Setup
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
-# بعد از healthy:
+# Once healthy:
 bash scripts/smoke-test.sh
 ```
 
 
-| سرویس       | آدرس                                                                                              |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| پنل ادمین   | [http://localhost/admin](http://localhost/admin) (`ADMIN_TOKEN` پیش‌فرض: `change-me-admin-token`) |
-| لندینگ‌ها   | [http://localhost/:slug/](http://localhost/:slug/)                                                |
-| ثبت فرم     | [http://localhost/api/forms/:key/submit](http://localhost/api/forms/:key/submit) → **Edge**       |
-| API مدیریتی | [http://localhost/api/](http://localhost/api/)... → Master                                        |
-| RabbitMQ UI | [http://localhost:15672](http://localhost:15672) (syncpage/syncpage)                              |
+| Service                | Endpoint                                                                  |
+| ---------------------- | ------------------------------------------------------------------------- |
+| Admin Panel            | `http://localhost/admin` (default `ADMIN_TOKEN`: `change-me-admin-token`) |
+| Landing Pages          | `http://localhost/:slug/`                                                 |
+| Form Submission        | `http://localhost/api/forms/:key/submit` → **Edge**                       |
+| Management API         | `http://localhost/api/...` → **Master**                                   |
+| RabbitMQ Management UI | `http://localhost:15672` (credentials: `syncpage`/`syncpage`)             |
 
 
-Composeهای پروداکشن:
+Production Compose files:
 
 
-| فایل                        | کاربرد                           |
-| --------------------------- | -------------------------------- |
-| `docker-compose.master.yml` | Master + Postgres + RabbitMQ     |
-| `docker-compose.node.yml`   | Edge + Postgres محلی (RMQ ریموت) |
+| File                        | Purpose                            |
+| --------------------------- | ---------------------------------- |
+| `docker-compose.master.yml` | Master + Postgres + RabbitMQ       |
+| `docker-compose.node.yml`   | Edge + Local Postgres (Remote RMQ) |
 
 
-توسعه بدون کل stack:
+Development without full stack containers:
 
 ```bash
 cp .env.example .env
@@ -117,29 +115,29 @@ npm run start:dev   # NODE_ROLE=MASTER
 
 
 
-## ۳. پروداکشن: Edge روی سرور جدا
+## 3. Production: Deploying Edge on a Separate Server
 
 
 
-### پیش‌نیاز شبکه
+### Network Requirements
 
-از سرور Edge باید برسند به:
+Edge servers require connectivity to the following Master services:
 
-1. **RabbitMQ Master** — پورت `5672`
-2. **HTTP دانلود پکیج Master** — `MASTER_INTERNAL_URL`
-3. **Bootstrap API** — فقط موقع نصب: `GET /api/nodes/bootstrap/:token`
-
-
-| پورت        | کاربرد                  | توصیه فایروال        |
-| ----------- | ----------------------- | -------------------- |
-| `80`/`3000` | API + ادمین + bootstrap | ادمین را محدود کنید  |
-| `5672`      | AMQP برای Edge          | فقط IPهای Edge / VPN |
-| `15672`     | Management UI           | فقط اپراتور          |
+1. **Master RabbitMQ** — Port `5672`
+2. **Master Package Download Endpoint (HTTP)** — `MASTER_INTERNAL_URL`
+3. **Bootstrap API** — Required only during setup: `GET /api/nodes/bootstrap/:token`
 
 
-بهترین راه: **افزودن نود در پنل** و اجرای کامند silent، سپس **Verify**.
+| Port        | Usage                   | Recommended Firewall Rule |
+| ----------- | ----------------------- | ------------------------- |
+| `80`/`3000` | API + Admin + Bootstrap | Restrict Admin access     |
+| `5672`      | AMQP for Edge Nodes     | Whitelist Edge IPs / VPN  |
+| `15672`     | RabbitMQ Management UI  | Operators only            |
 
-### Env سرور Edge (مرجع دستی)
+
+Recommended workflow: **Add node in Admin Panel**, execute the unattended command on the Edge server, and then click **Verify**.
+
+### Edge Server Env (Manual Reference)
 
 ```bash
 NODE_ROLE=EDGE
@@ -156,27 +154,27 @@ MASTER_INTERNAL_URL=http://master.internal:3000
 
 
 
-## ۴. همگام‌سازی
+## 4. Synchronization Mechanism
 
-1. Confirm روی Master → OutboxEvent
-2. Outbox به **همه** صف‌های نود publish می‌کند
-3. هر Edge پیام را اعمال می‌کند (idempotent)
-4. سابمیشن از Edge به صف Master برمی‌گردد
+1. Admin confirms package on Master → `OutboxEvent` created.
+2. Outbox publisher broadcasts to **all** registered node queues.
+3. Each Edge node consumes and applies updates (idempotent operations).
+4. Submissions captured on Edge are buffered and returned to Master's submission queue.
 
 ---
 
 
 
-## ۵. چک‌لیست اتصال
+## 5. Connectivity Checklist
 
 
-| مورد           | کجا                                       |
-| -------------- | ----------------------------------------- |
-| نقش            | Edge: `EDGE` / Master: `MASTER`           |
-| صف Edge        | پنل → per-node؛ بدون نود → `landing.sync` |
-| AMQP           | `RABBITMQ_PUBLIC_URL` روی Master          |
-| Verify         | پنل → `GET http://host:port/api/health`   |
-| `EDGE_NODE_ID` | از bootstrap                              |
+| Item                | Details                                                 |
+| ------------------- | ------------------------------------------------------- |
+| Role                | Edge: `EDGE` / Master: `MASTER`                         |
+| Edge Queue          | Panel → per-node; single node fallback → `landing.sync` |
+| AMQP                | Configured via `RABBITMQ_PUBLIC_URL` on Master          |
+| Health Verification | Panel → `GET http://host:port/api/health`               |
+| `EDGE_NODE_ID`      | Received during bootstrap process                       |
 
 
 ```bash
@@ -188,36 +186,36 @@ curl -fsS "http://127.0.0.1:3000/api/health"
 
 
 
-## ۶. چند Edge
+## 6. Multi-Edge Deployment
 
-با ثبت نود در پنل، هر Edge صف خودش را دارد و Outbox به همه صف‌ها publish می‌کند. اگر هیچ نودی نباشد، رفتار قبلی (صف مشترک) برای compose محلی حفظ می‌شود.
-
----
-
-
-
-## Env مهم
-
-
-| متغیر                  | Master             | Edge      |
-| ---------------------- | ------------------ | --------- |
-| `NODE_ROLE`            | `MASTER`           | `EDGE`    |
-| `EDGE_NODE_ID`         | —                  | از پنل    |
-| `RABBITMQ_PUBLIC_URL`  | برای bootstrap نود | —         |
-| `PUBLIC_BASE_URL`      | برای کامند نصب     | —         |
-| `SYNCPAGE_GITHUB_REPO` | لینک install-node  | —         |
-| `ADMIN_TOKEN`          | بله                | لازم نیست |
-
+When nodes are registered via the Admin Panel, each Edge receives its own dedicated queue, and the Outbox service broadcasts updates to all queues. If no nodes are registered, the system falls back to a shared queue for single-node / local docker-compose environments.
 
 ---
 
 
 
-## مسیرهای کد
+## Key Environment Variables
 
-- `install.sh` / `install-node.sh` — نصب یک‌خطی Master / Edge
-- `docker-compose.master.yml` / `docker-compose.node.yml`
-- `src/modules/nodes` — CRUD نود، bootstrap، verify
-- `src/modules/sync` — Outbox + publish به صف‌های per-node
-- `scripts/smoke-test.sh` — تست محلی
+
+| Variable              | Master                                      | Edge                                |
+| --------------------- | ------------------------------------------- | ----------------------------------- |
+| `NODE_ROLE`           | `MASTER`                                    | `EDGE`                              |
+| `EDGE_NODE_ID`        | —                                           | Provided by Admin Panel / Bootstrap |
+| `RABBITMQ_PUBLIC_URL` | Used for node bootstrap                     | —                                   |
+| `PUBLIC_BASE_URL`     | Used in installation scripts                | —                                   |
+| `SYNCPAGE_GITHUB_REPO`| Repository source for `install-node` script | —                                   |
+| `ADMIN_TOKEN`         | Required                                    | Not required                        |
+
+
+---
+
+
+
+## Project Structure & Key Paths
+
+- `install.sh` / `install-node.sh` — One-line installers for Master and Edge nodes
+- `docker-compose.master.yml` / `docker-compose.node.yml` — Docker orchestration manifests
+- `src/modules/nodes` — Node management, bootstrapping, and health verification
+- `src/modules/sync` — Outbox publisher and per-node message synchronization
+- `scripts/smoke-test.sh` — End-to-end local integration testing script
 

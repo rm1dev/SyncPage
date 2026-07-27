@@ -2,7 +2,7 @@
 # =============================================================================
 # SyncPage Master installer
 # Usage:
-#   bash <(curl -Ls https://raw.githubusercontent.com/USER/SyncPage/master/install.sh)
+#   bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
 #   bash <(curl -Ls .../install.sh) v1.0.0   # optional tag/branch
 # =============================================================================
 set -euo pipefail
@@ -14,8 +14,8 @@ blue='\033[0;34m'
 plain='\033[0m'
 
 # ---- defaults (override via env before running) ----
-SYNCPAGE_GITHUB_REPO="${SYNCPAGE_GITHUB_REPO:-YOUR_GITHUB_USER/SyncPage}"
-SYNCPAGE_GITHUB_BRANCH="${1:-${SYNCPAGE_GITHUB_BRANCH:-master}}"
+SYNCPAGE_GITHUB_REPO="${SYNCPAGE_GITHUB_REPO:-rm1dev/SyncPage}"
+SYNCPAGE_GITHUB_BRANCH="${1:-${SYNCPAGE_GITHUB_BRANCH:-main}}"
 INSTALL_DIR_DEFAULT="/opt/syncpage"
 HTTP_PORT_DEFAULT="80"
 APP_PORT_DEFAULT="3000"

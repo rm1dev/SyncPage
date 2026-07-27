@@ -2,7 +2,7 @@
 # =============================================================================
 # SyncPage Edge Node installer — NON-INTERACTIVE
 # Usage (from Admin panel):
-#   bash <(curl -Ls https://raw.githubusercontent.com/USER/SyncPage/master/install-node.sh) \
+#   bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-node.sh) \
 #     https://MASTER/api/nodes/bootstrap/TOKEN
 # =============================================================================
 set -euo pipefail

@@ -49,8 +49,8 @@ services:
       MASTER_INTERNAL_URL: http://app-master:3000
       PUBLIC_BASE_URL: http://localhost
       OUTBOX_POLL_MS: "3000"
-      SYNCPAGE_GITHUB_REPO: YOUR_GITHUB_USER/SyncPage
-      SYNCPAGE_GITHUB_BRANCH: master
+      SYNCPAGE_GITHUB_REPO: rm1dev/SyncPage
+      SYNCPAGE_GITHUB_BRANCH: main
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp

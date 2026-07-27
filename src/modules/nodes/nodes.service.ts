@@ -104,8 +104,8 @@ export class NodesService {
     const publicBaseUrl =
       this.config.get<string>('publicBaseUrl') || 'http://localhost';
     const githubRepo =
-      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/SyncPage';
-    const githubBranch = this.config.get<string>('githubBranch') || 'master';
+      this.config.get<string>('githubRepo') || 'rm1dev/SyncPage';
+    const githubBranch = this.config.get<string>('githubBranch') || 'main';
 
     return {
       nodeId: node.id,
@@ -198,8 +198,8 @@ export class NodesService {
       this.config.get<string>('publicBaseUrl') || 'http://localhost'
     ).replace(/\/$/, '');
     const githubRepo =
-      this.config.get<string>('githubRepo') || 'YOUR_GITHUB_USER/SyncPage';
-    const githubBranch = this.config.get<string>('githubBranch') || 'master';
+      this.config.get<string>('githubRepo') || 'rm1dev/SyncPage';
+    const githubBranch = this.config.get<string>('githubBranch') || 'main';
     const scriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/install-node.sh`;
     const bootstrapUrl = `${publicBaseUrl}/api/nodes/bootstrap/${node.installToken}`;
     // کامند silent — بدون سوال

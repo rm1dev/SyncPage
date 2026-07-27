@@ -21,6 +21,6 @@ export default () => ({
   // شناسه نود Edge (موقع نصب ست می‌شه)
   edgeNodeId: process.env.EDGE_NODE_ID || '',
   // ریپوی گیت‌هاب برای ساخت کامند نصب
-  githubRepo: process.env.SYNCPAGE_GITHUB_REPO || 'YOUR_GITHUB_USER/SyncPage',
-  githubBranch: process.env.SYNCPAGE_GITHUB_BRANCH || 'master',
+  githubRepo: process.env.SYNCPAGE_GITHUB_REPO || 'rm1dev/SyncPage',
+  githubBranch: process.env.SYNCPAGE_GITHUB_BRANCH || 'main',
 });
