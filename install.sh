@@ -317,9 +317,10 @@ if [[ -n "$EDGE_NODE_ID" ]]; then
 fi
 echo ""
 echo -e "Health: curl -fsS ${PUBLIC_BASE_URL}/api/health"
-echo -e "Start:  docker compose -f docker-compose.master.yml --env-file .env up -d"
-echo -e "Logs:   docker compose -f docker-compose.master.yml --env-file .env logs -f"
-echo -e "Stop:   docker compose -f docker-compose.master.yml --env-file .env down"
+echo -e "Start:  make master-up      (or: docker compose -f docker-compose.master.yml --env-file .env up -d)"
+echo -e "Logs:   make master-logs"
+echo -e "Stop:   make master-down"
+echo -e "Help:   make help"
 echo ""
 echo -e "${yellow}Important: do NOT run plain 'docker compose up' here (local dual stack).${plain}"
 echo -e "${yellow}Master panel path is always /spadmin (via nginx on host port ${HTTP_PORT}).${plain}"

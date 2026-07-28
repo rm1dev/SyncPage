@@ -115,6 +115,23 @@ Production Compose files:
 
 On a Master server installed via `install.sh`, always use `docker-compose.master.yml`. Plain `docker compose up` starts the **local** dual-role stack and can conflict on port 80.
 
+### Makefile shortcuts
+
+From the project directory (`/opt/syncpage` on Master):
+
+```bash
+make help           # list targets
+make master-up      # docker compose -f docker-compose.master.yml --env-file .env up -d
+make master-build   # up -d --build
+make master-logs    # logs -f
+make master-down    # down
+make node-up        # Edge stack (docker-compose.node.yml)
+make local-up       # local Master+Edge+nginx
+make smoke          # scripts/smoke-test.sh
+```
+
+Override env file: `make master-up ENV_FILE=.env.prod`
+
 
 Development without full stack containers:
 
@@ -227,6 +244,7 @@ When nodes are registered via the Admin Panel, each Edge receives its own dedica
 
 ## Project Structure & Key Paths
 
+- `Makefile` — shortcuts for Master / Edge / local compose (`make help`)
 - `install.sh` / `install-node.sh` — One-line installers for Master and Edge nodes
 - `docker-compose.master.yml` / `docker-compose.node.yml` — Docker orchestration manifests
 - `src/modules/nodes` — Node management, bootstrapping, and health verification
