@@ -13,17 +13,17 @@ COMPOSE_NODE   := $(DOCKER) compose -f docker-compose.node.yml --env-file $(ENV_
 COMPOSE_LOCAL  := $(DOCKER) compose
 
 .PHONY: help \
-	master-up master-down master-restart master-build master-logs master-ps master-pull \
-	node-up node-down node-restart node-build node-logs node-ps \
-	local-up local-down local-restart local-build local-logs local-ps \
+	master-up master-down master-down-v master-restart master-build master-logs master-ps master-pull \
+	node-up node-down node-down-v node-restart node-build node-logs node-ps \
+	local-up local-down local-down-v local-restart local-build local-logs local-ps \
 	smoke master-shell node-shell
 
 help: ## Show available targets
 	@echo "SyncPage Makefile"
 	@echo ""
-	@echo "Master (production):  make master-up | master-down | master-logs | master-build"
-	@echo "Edge node:            make node-up   | node-down   | node-logs   | node-build"
-	@echo "Local (dev stack):    make local-up  | local-down  | local-logs  | smoke"
+	@echo "Master (production):  make master-up | master-down | master-down-v | master-logs | master-build"
+	@echo "Edge node:            make node-up   | node-down   | node-down-v   | node-logs   | node-build"
+	@echo "Local (dev stack):    make local-up  | local-down  | local-down-v  | local-logs  | smoke"
 	@echo ""
 	@echo "ENV_FILE default: $(ENV_FILE)  (override: make master-up ENV_FILE=.env.prod)"
 	@echo "DOCKER binary:    $(DOCKER)  (override: make master-ps DOCKER='sudo docker')"
@@ -37,6 +37,9 @@ master-up: ## Start Master stack (detached)
 
 master-down: ## Stop Master stack
 	$(COMPOSE_MASTER) down
+
+master-down-v: ## Stop Master stack and remove volumes
+	$(COMPOSE_MASTER) down -v
 
 master-restart: ## Restart Master stack
 	$(COMPOSE_MASTER) up -d --force-recreate
@@ -64,6 +67,9 @@ node-up: ## Start Edge node stack (detached)
 node-down: ## Stop Edge node stack
 	$(COMPOSE_NODE) down
 
+node-down-v: ## Stop Edge node stack and remove volumes
+	$(COMPOSE_NODE) down -v
+
 node-restart: ## Restart Edge node stack
 	$(COMPOSE_NODE) up -d --force-recreate
 
@@ -86,6 +92,9 @@ local-up: ## Start local Master+Edge+nginx stack
 
 local-down: ## Stop local stack
 	$(COMPOSE_LOCAL) down
+
+local-down-v: ## Stop local stack and remove volumes
+	$(COMPOSE_LOCAL) down -v
 
 local-restart: ## Restart local stack
 	$(COMPOSE_LOCAL) up -d --force-recreate
