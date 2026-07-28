@@ -74,7 +74,19 @@ PUBLIC_IP="$(detect_public_ip)"
 prompt "Install directory" "$INSTALL_DIR_DEFAULT"
 INSTALL_DIR="$REPLY"
 
-prompt "HTTP publish port (host)" "$HTTP_PORT_DEFAULT"
+# دامنه اختیاری — خالی یعنی فقط IP
+prompt "Domain (optional, empty = use IP)" ""
+DOMAIN_RAW="$REPLY"
+# اگر کاربر با https:// یا / آخر وارد کرد، تمیزش می‌کنیم
+DOMAIN="$(echo "$DOMAIN_RAW" | sed -E 's#^https?://##; s#/.*$##; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+
+if [[ -n "$DOMAIN" ]]; then
+  HTTP_PORT_DEFAULT="80"
+else
+  HTTP_PORT_DEFAULT="1313"
+fi
+
+prompt "HTTP publish port (host, nginx)" "$HTTP_PORT_DEFAULT"
 HTTP_PORT="$REPLY"
 
 prompt "App internal port" "$APP_PORT_DEFAULT"
@@ -89,9 +101,16 @@ DB_PASS="$REPLY"
 prompt "RabbitMQ password" "$RMQ_PASS_DEFAULT"
 RMQ_PASS="$REPLY"
 
-prompt "Public base URL (panel / bootstrap)" "http://${PUBLIC_IP}:${HTTP_PORT}"
+if [[ -n "$DOMAIN" ]]; then
+  PUBLIC_BASE_DEFAULT="https://${DOMAIN}"
+else
+  PUBLIC_BASE_DEFAULT="http://${PUBLIC_IP}:${HTTP_PORT}"
+fi
+
+prompt "Public base URL (panel / bootstrap)" "$PUBLIC_BASE_DEFAULT"
 PUBLIC_BASE_URL="$REPLY"
 
+# Edge پکیج را مستقیم از IP Master بگیرد (نه لزوماً از CDN)
 prompt "Master internal URL (Edge package download)" "http://${PUBLIC_IP}:${HTTP_PORT}"
 MASTER_INTERNAL_URL="$REPLY"
 
@@ -163,6 +182,7 @@ OUTBOX_MAX_ATTEMPTS=10
 SYNCPAGE_GITHUB_REPO=${SYNCPAGE_GITHUB_REPO}
 SYNCPAGE_GITHUB_BRANCH=${SYNCPAGE_GITHUB_BRANCH}
 
+DOMAIN=${DOMAIN}
 HTTP_PORT=${HTTP_PORT}
 APP_PORT=${APP_PORT}
 EOF
@@ -269,7 +289,7 @@ echo ""
 echo -e "${green}════════════════════════════════════════${plain}"
 echo -e "${green}SyncPage Master installed successfully${plain}"
 echo -e "${green}════════════════════════════════════════${plain}"
-echo -e "Panel:       ${PUBLIC_BASE_URL}/admin"
+echo -e "Panel:       ${PUBLIC_BASE_URL}/spadmin"
 echo -e "Admin token: ${ADMIN_TOKEN}"
 echo -e "Install dir: ${INSTALL_DIR}"
 echo -e "RabbitMQ:    ${RABBITMQ_PUBLIC_URL}"
@@ -283,8 +303,8 @@ echo -e "Start:  docker compose -f docker-compose.master.yml --env-file .env up 
 echo -e "Logs:   docker compose -f docker-compose.master.yml --env-file .env logs -f"
 echo -e "Stop:   docker compose -f docker-compose.master.yml --env-file .env down"
 echo ""
-echo -e "${yellow}Important: do NOT run plain 'docker compose up' here.${plain}"
-echo -e "${yellow}That file is for local dev (nginx:80) and conflicts with Master app:${HTTP_PORT}.${plain}"
+echo -e "${yellow}Important: do NOT run plain 'docker compose up' here (local dual stack).${plain}"
+echo -e "${yellow}Master panel path is always /spadmin (via nginx on host port ${HTTP_PORT}).${plain}"
 if [[ ! "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
   echo ""
   echo -e "${yellow}Next: open Admin → Nodes → Add node → copy install command${plain}"

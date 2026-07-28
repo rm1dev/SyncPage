@@ -4,13 +4,13 @@
     <span class="subtitle">نصب، تایید اتصال و تنظیمات نود Edge</span>
   </div>
   <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-    <form method="post" action="/admin/nodes/{{node.id}}/verify">
+    <form method="post" action="/spadmin/nodes/{{node.id}}/verify">
       <button type="submit" class="btn btn-primary">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <span>Verify</span>
       </button>
     </form>
-    <a href="/admin/nodes" class="btn btn-secondary"><span>بازگشت</span></a>
+    <a href="/spadmin/nodes" class="btn btn-secondary"><span>بازگشت</span></a>
   </div>
 </header>
 
@@ -64,7 +64,7 @@
     <p style="color: var(--color-danger); margin-top: 0.75rem; font-size: 0.85rem;">آخرین خطا: {{node.lastError}}</p>
   {{/if}}
   <div style="margin-top: 1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
-    <form method="post" action="/admin/nodes/{{node.id}}/regenerate-token">
+    <form method="post" action="/spadmin/nodes/{{node.id}}/regenerate-token">
       <button type="submit" class="btn btn-secondary" onclick="return confirm('توکن قبلی باطل می‌شود. ادامه؟')">
         <span>ساخت توکن نصب جدید</span>
       </button>
@@ -75,7 +75,7 @@
 <!-- ویرایش -->
 <div class="content-wrapper mt-3">
   <div class="section-header"><span>ویرایش مشخصات</span></div>
-  <form method="post" action="/admin/nodes/{{node.id}}">
+  <form method="post" action="/spadmin/nodes/{{node.id}}">
     <div class="form-group">
       <label class="form-label" for="title">عنوان</label>
       <input class="form-control" id="title" name="title" required value="{{node.title}}" />
@@ -106,7 +106,7 @@
 
 <div class="content-wrapper mt-3">
   <div class="section-header"><span>حذف نود</span></div>
-  <form method="post" action="/admin/nodes/{{node.id}}/delete" onsubmit="return confirm('نود برای همیشه حذف شود؟')">
+  <form method="post" action="/spadmin/nodes/{{node.id}}/delete" onsubmit="return confirm('نود برای همیشه حذف شود؟')">
     <button type="submit" class="btn" style="background: var(--color-danger-bg); color: var(--color-danger);">
       <span>حذف نود</span>
     </button>

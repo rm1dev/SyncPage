@@ -39,7 +39,7 @@
   <div class="section-header">
     <span>۱. انتخاب و آپلود فایل ZIP لندینگ</span>
   </div>
-  <form id="upload-form" method="post" action="/admin/deploy/upload" enctype="multipart/form-data">
+  <form id="upload-form" method="post" action="/spadmin/deploy/upload" enctype="multipart/form-data">
     <div class="form-group">
       <label class="form-label" for="slug">اسلاگ لندینگ (Slug)</label>
       <input class="form-control" id="slug" name="slug" required pattern="[a-zA-Z0-9-_]+" placeholder="مثلاً: product-launch" value="{{slug}}" />
@@ -82,7 +82,7 @@
   <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
     با تایید این مرحله، فایل‌های لندینگ در پوشه <code>static_pages</code> جایگزین شده و رویداد همگام‌سازی برای گره‌های Edge در صف ارسال قرار می‌گیرد.
   </p>
-  <form method="post" action="/admin/deploy/confirm">
+  <form method="post" action="/spadmin/deploy/confirm">
     <input type="hidden" name="previewId" value="{{previewId}}" />
     <input type="hidden" name="slug" value="{{slug}}" />
     <div class="text-left">

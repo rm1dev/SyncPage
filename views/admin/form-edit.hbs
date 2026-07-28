@@ -3,7 +3,7 @@
     <h1>{{#if form}}ویرایش فرم: {{form.title}}{{else}}ایجاد فرم جدید{{/if}}</h1>
     <span class="subtitle">تنظیمات متاداده و ساختار فیلدهای فرم به صورت JSON</span>
   </div>
-  <a href="/admin" class="btn btn-secondary">
+  <a href="/spadmin" class="btn btn-secondary">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
     <span>بازگشت به داشبورد</span>
   </a>
@@ -16,7 +16,7 @@
   </div>
 {{/if}}
 
-<form method="post" action="{{#if form}}/admin/forms/{{form.id}}{{else}}/admin/forms{{/if}}" class="content-wrapper">
+<form method="post" action="{{#if form}}/spadmin/forms/{{form.id}}{{else}}/spadmin/forms{{/if}}" class="content-wrapper">
   <div class="section-header">
     <span>۱. تنظیمات عمومی فرم</span>
   </div>
@@ -58,6 +58,6 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       <span>ذخیره فرم</span>
     </button>
-    <a href="/admin" class="btn btn-secondary">انصراف</a>
+    <a href="/spadmin" class="btn btn-secondary">انصراف</a>
   </div>
 </form>

@@ -23,11 +23,14 @@ NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
 ```
 
-The script will prompt for setup details (with sensible defaults): installation path, HTTP port (default `1313`), admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`. It also asks whether to install an **Edge node on the same server** (default **y**); if yes, Edge listens on a separate port (default `3000`).
+The script will prompt for setup details (with sensible defaults): optional **domain**, HTTP port (`80` if domain, else `1313`), admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`. It also asks whether to install an **Edge node on the same server** (default **y**); if yes, Edge listens on a separate port (default `3000`).
 
 After installation:
 
-- Admin Panel: `http://SERVER:1313/admin`
+- Admin Panel is always under **`/spadmin`**:
+  - with domain (CDN/SSL): `https://YOUR_DOMAIN/spadmin`
+  - without domain: `http://SERVER:1313/spadmin`
+- Master is fronted by **nginx** (`docker-compose.master.yml`)
 - The admin token will be printed in the script output.
 - If co-located Edge was installed: `/opt/syncpage-node` and `http://SERVER:3000`
 
@@ -90,7 +93,7 @@ bash scripts/smoke-test.sh
 
 | Service                | Endpoint                                                                  |
 | ---------------------- | ------------------------------------------------------------------------- |
-| Admin Panel            | `http://localhost/admin` (default `ADMIN_TOKEN`: `change-me-admin-token`) |
+| Admin Panel            | `http://localhost/spadmin` (default `ADMIN_TOKEN`: `change-me-admin-token`) |
 | Landing Pages          | `http://localhost/:slug/`                                                 |
 | Form Submission        | `http://localhost/api/forms/:key/submit` → **Edge**                       |
 | Management API         | `http://localhost/api/...` → **Master**                                   |
@@ -102,10 +105,10 @@ Production Compose files:
 
 | File                        | Purpose                            |
 | --------------------------- | ---------------------------------- |
-| `docker-compose.master.yml` | Master + Postgres + RabbitMQ (`app` publishes host `HTTP_PORT`, default **1313**; no nginx) |
+| `docker-compose.master.yml` | nginx + Master + Postgres + RabbitMQ (`HTTP_PORT` → nginx:80; panel at `/spadmin`) |
 | `docker-compose.node.yml`   | Edge + Local Postgres (Remote RMQ) |
 
-On a Master server installed via `install.sh`, always use `docker-compose.master.yml`. Plain `docker compose up` starts the **local** stack (`nginx` on port 80) and can conflict if Master `HTTP_PORT` is also set to 80.
+On a Master server installed via `install.sh`, always use `docker-compose.master.yml`. Plain `docker compose up` starts the **local** dual-role stack and can conflict on port 80.
 
 
 Development without full stack containers:
@@ -135,7 +138,8 @@ Edge servers require connectivity to the following Master services:
 
 | Port        | Usage                   | Recommended Firewall Rule |
 | ----------- | ----------------------- | ------------------------- |
-| `1313`      | API + Admin + Bootstrap | Restrict Admin access     |
+| `80` / `1313` | nginx → API + `/spadmin` + Bootstrap | Restrict Admin; use `80` behind CDN |
+
 | `5672`      | AMQP for Edge Nodes     | Whitelist Edge IPs / VPN  |
 | `15672`     | RabbitMQ Management UI  | Operators only            |
 

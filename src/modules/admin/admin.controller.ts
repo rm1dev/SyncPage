@@ -23,7 +23,7 @@ import { FormEngineService } from '../form-engine/form-engine.service';
 import { DeploymentService } from '../deployment/deployment.service';
 import { NodesService } from '../nodes/nodes.service';
 
-@Controller('admin')
+@Controller('spadmin')
 export class AdminController {
   constructor(
     private readonly forms: FormEngineService,
@@ -49,20 +49,20 @@ export class AdminController {
   ) {
     const expected = process.env.ADMIN_TOKEN || 'change-me-admin-token';
     if (!token || token !== expected) {
-      return res.redirect('/admin/login?error=1');
+      return res.redirect('/spadmin/login?error=1');
     }
     res.cookie('admin_token', token, {
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 7 * 24 * 3600 * 1000,
     });
-    return res.redirect('/admin');
+    return res.redirect('/spadmin');
   }
 
   @Get('logout')
   logout(@Res() res: Response) {
     res.clearCookie('admin_token');
-    return res.redirect('/admin/login');
+    return res.redirect('/spadmin/login');
   }
 
   @Get()
@@ -147,7 +147,7 @@ export class AdminController {
         slug: body.slug,
         body: fields,
       });
-      return res.redirect('/admin?flash=' + encodeURIComponent('فرم ذخیره شد'));
+      return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Save failed';
       return res.status(400).render('admin/form-edit', {
@@ -175,7 +175,7 @@ export class AdminController {
         slug: body.slug,
         body: fields,
       });
-      return res.redirect('/admin?flash=' + encodeURIComponent('فرم به‌روز شد'));
+      return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Update failed';
       const form = await this.forms.getById(id);
@@ -245,11 +245,11 @@ export class AdminController {
         checksum: result.checksum,
         previewUrl: result.previewUrl,
       });
-      return res.redirect(`/admin/deploy?${q.toString()}`);
+      return res.redirect(`/spadmin/deploy?${q.toString()}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       return res.redirect(
-        `/admin/deploy?error=${encodeURIComponent(message)}`,
+        `/spadmin/deploy?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -263,12 +263,12 @@ export class AdminController {
     try {
       await this.deployment.confirm(body.previewId, body.slug);
       return res.redirect(
-        `/admin?flash=${encodeURIComponent('لندینگ مستقر و در صف همگام‌سازی قرار گرفت')}`,
+        `/spadmin?flash=${encodeURIComponent('لندینگ مستقر و در صف همگام‌سازی قرار گرفت')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Confirm failed';
       return res.redirect(
-        `/admin/deploy?error=${encodeURIComponent(message)}`,
+        `/spadmin/deploy?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -326,7 +326,7 @@ export class AdminController {
         notes: body.notes,
       });
       return res.redirect(
-        `/admin/nodes/${node.id}?flash=${encodeURIComponent('نود ساخته شد — کامند نصب را کپی کنید')}`,
+        `/spadmin/nodes/${node.id}?flash=${encodeURIComponent('نود ساخته شد — کامند نصب را کپی کنید')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Create failed';
@@ -381,12 +381,12 @@ export class AdminController {
         notes: body.notes,
       });
       return res.redirect(
-        `/admin/nodes/${id}?flash=${encodeURIComponent('نود به‌روز شد')}`,
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود به‌روز شد')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Update failed';
       return res.redirect(
-        `/admin/nodes/${id}?error=${encodeURIComponent(message)}`,
+        `/spadmin/nodes/${id}?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -397,7 +397,7 @@ export class AdminController {
     try {
       await this.nodes.verify(id);
       return res.redirect(
-        `/admin/nodes/${id}?flash=${encodeURIComponent('نود آنلاین و تایید شد')}`,
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود آنلاین و تایید شد')}`,
       );
     } catch (err: unknown) {
       let text = 'Verify failed';
@@ -415,7 +415,7 @@ export class AdminController {
         text = err.message;
       }
       return res.redirect(
-        `/admin/nodes/${id}?error=${encodeURIComponent(text)}`,
+        `/spadmin/nodes/${id}?error=${encodeURIComponent(text)}`,
       );
     }
   }
@@ -426,12 +426,12 @@ export class AdminController {
     try {
       await this.nodes.regenerateToken(id);
       return res.redirect(
-        `/admin/nodes/${id}?flash=${encodeURIComponent('توکن نصب جدید ساخته شد')}`,
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('توکن نصب جدید ساخته شد')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed';
       return res.redirect(
-        `/admin/nodes/${id}?error=${encodeURIComponent(message)}`,
+        `/spadmin/nodes/${id}?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -442,12 +442,12 @@ export class AdminController {
     try {
       await this.nodes.remove(id);
       return res.redirect(
-        `/admin/nodes?flash=${encodeURIComponent('نود حذف شد')}`,
+        `/spadmin/nodes?flash=${encodeURIComponent('نود حذف شد')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Delete failed';
       return res.redirect(
-        `/admin/nodes?error=${encodeURIComponent(message)}`,
+        `/spadmin/nodes?error=${encodeURIComponent(message)}`,
       );
     }
   }
