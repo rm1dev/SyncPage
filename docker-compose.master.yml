@@ -22,6 +22,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
+      # فقط روی اولین بوت (volume خالی) اعمال می‌شه؛ بعدش با .env عوض کردی باید down -v بزنی
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-syncpage}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-syncpage}
     volumes:
@@ -44,8 +45,10 @@ services:
     env_file: .env
     environment:
       NODE_ROLE: MASTER
-      # PORT / DATABASE_URL / RABBITMQ_* از .env می‌آیند؛ اینجا فقط نقش را قفل می‌کنیم
       PORT: ${APP_PORT:-3000}
+      # داخل شبکه Docker هاست rabbitmq است؛ پسورد باید با RABBITMQ_PASS یکی باشه
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-syncpage}:${RABBITMQ_PASS:-syncpage}@rabbitmq:5672
+      DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@db:5432/${POSTGRES_DB:-syncpage}?schema=public
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp
