@@ -1,4 +1,11 @@
 {
+  "users": [
+    {
+      "name": "syncpage",
+      "password": "syncpage",
+      "tags": ["administrator"]
+    }
+  ],
   "vhosts": [
     {
       "name": "/"
