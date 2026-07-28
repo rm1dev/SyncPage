@@ -25,7 +25,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.s
 
 The script will prompt for setup details (with short English hints). Important fields:
 
-- **Public domain** (optional): hostname only, e.g. `land.sikaap.com`. Leave empty to use server IP. With a domain, panel URL becomes `https://DOMAIN/spadmin` automatically (no separate “Public base URL” question).
+- **Public domain** (optional): hostname only, e.g. `landing.your-domain.com`. Leave empty to use server IP. With a domain, panel URL becomes `https://DOMAIN/spadmin` automatically (no separate “Public base URL” question).
 - **HTTP port**: nginx listen port (`80` with domain / CDN, else `1313`)
 - **Master internal URL** / **RabbitMQ URL**: prefer direct server IP (not CDN)
 - **Edge on this server?** (default **y**) — separate port (default `3000`)

@@ -83,7 +83,7 @@ INSTALL_DIR="$REPLY"
 
 echo ""
 note "If you use a CDN/SSL domain, enter the hostname only (no https://)."
-note "Example: land.sikaap.com"
+note "Example: landing.your-domain.com"
 note "Leave empty to use this server IP instead."
 prompt "Public domain (optional)" ""
 DOMAIN_RAW="$REPLY"
