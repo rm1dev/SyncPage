@@ -50,7 +50,10 @@ services:
       - static_pages:/app/static_pages
       - temp_data:/app/temp
     ports:
-      - "${HTTP_PORT:-80}:${APP_PORT:-3000}"
+      - "${HTTP_PORT:-1313}:${APP_PORT:-3000}"
+    # برای Verify نود هم‌محل روی host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

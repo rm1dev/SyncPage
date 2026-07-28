@@ -74,7 +74,14 @@ DB_NAME="$(parse_json databaseName)"
 DB_USER="$(parse_json databaseUser)"
 DB_PASS="$(parse_json databasePassword)"
 
-INSTALL_DIR="/opt/syncpage-node"
+# نصب هم‌محل با Master: AMQP و دانلود پکیج از gateway هاست
+if [[ "${SYNCPAGE_COLOCATED:-0}" == "1" ]]; then
+  RMQ_URL="$(echo "$RMQ_URL" | sed -E 's#@[^/:]+:#@host.docker.internal:#')"
+  MASTER_URL="$(echo "$MASTER_URL" | sed -E 's#://[^/:]+#://host.docker.internal#')"
+  echo -e "${yellow}Co-located mode: RabbitMQ/Master via host.docker.internal${plain}"
+fi
+
+INSTALL_DIR="${SYNCPAGE_NODE_DIR:-/opt/syncpage-node}"
 REPO_URL="https://github.com/${GITHUB_REPO}.git"
 
 echo -e "Node: ${TITLE} (${NODE_ID})"
@@ -86,7 +93,14 @@ need_cmd git
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-if [[ -d .git ]]; then
+if [[ "${SYNCPAGE_SKIP_CLONE:-0}" == "1" ]]; then
+  # نصب هم‌محل: کد از قبل کپی شده (هم‌نسخه با Master)
+  if [[ ! -f docker-compose.node.yml ]]; then
+    echo -e "${red}SYNCPAGE_SKIP_CLONE=1 but docker-compose.node.yml missing in ${INSTALL_DIR}${plain}"
+    exit 1
+  fi
+  echo -e "${yellow}Using pre-seeded sources in ${INSTALL_DIR}${plain}"
+elif [[ -d .git ]]; then
   git fetch --all --tags
   git checkout "$GITHUB_BRANCH" || git checkout -B "$GITHUB_BRANCH" "origin/$GITHUB_BRANCH"
   git pull --ff-only || true

@@ -3,7 +3,6 @@
 # SyncPage Master installer
 # Usage:
 #   bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
-#   bash <(curl -Ls .../install.sh) v1.0.0   # optional tag/branch
 # =============================================================================
 set -euo pipefail
 
@@ -13,12 +12,13 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 plain='\033[0m'
 
-# ---- defaults (override via env before running) ----
-SYNCPAGE_GITHUB_REPO="${SYNCPAGE_GITHUB_REPO:-rm1dev/SyncPage}"
-SYNCPAGE_GITHUB_BRANCH="${1:-${SYNCPAGE_GITHUB_BRANCH:-main}}"
+# ریپو و برنچ ثابته؛ دیگه از کاربر نمی‌پرسیم
+SYNCPAGE_GITHUB_REPO="rm1dev/SyncPage"
+SYNCPAGE_GITHUB_BRANCH="main"
 INSTALL_DIR_DEFAULT="/opt/syncpage"
-HTTP_PORT_DEFAULT="80"
+HTTP_PORT_DEFAULT="1313"
 APP_PORT_DEFAULT="3000"
+EDGE_PORT_DEFAULT="3000"
 ADMIN_TOKEN_DEFAULT="$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 32)"
 DB_PASS_DEFAULT="$(openssl rand -hex 12 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 16)"
 RMQ_PASS_DEFAULT="$(openssl rand -hex 12 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 16)"
@@ -98,11 +98,18 @@ MASTER_INTERNAL_URL="$REPLY"
 prompt "RabbitMQ public URL (for Edge nodes)" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:5672"
 RABBITMQ_PUBLIC_URL="$REPLY"
 
-prompt "GitHub repo (owner/name)" "$SYNCPAGE_GITHUB_REPO"
-SYNCPAGE_GITHUB_REPO="$REPLY"
+prompt "Install Edge node on this server too? (y/n)" "y"
+INSTALL_LOCAL_EDGE="$REPLY"
 
-prompt "GitHub branch/tag" "$SYNCPAGE_GITHUB_BRANCH"
-SYNCPAGE_GITHUB_BRANCH="$REPLY"
+EDGE_PORT="$EDGE_PORT_DEFAULT"
+if [[ "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
+  prompt "Edge HTTP port (host)" "$EDGE_PORT_DEFAULT"
+  EDGE_PORT="$REPLY"
+  if [[ "$EDGE_PORT" == "$HTTP_PORT" ]]; then
+    echo -e "${red}Edge port must differ from Master HTTP port (${HTTP_PORT})${plain}"
+    exit 1
+  fi
+fi
 
 install_docker
 
@@ -163,6 +170,101 @@ EOF
 echo -e "${yellow}Building and starting Master stack...${plain}"
 docker compose -f docker-compose.master.yml --env-file .env up -d --build
 
+wait_master_health() {
+  echo -e "${yellow}Waiting for Master health...${plain}"
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${HTTP_PORT}/api/health" >/dev/null 2>&1; then
+      echo -e "${green}Master is healthy${plain}"
+      return 0
+    fi
+    sleep 2
+  done
+  echo -e "${red}Master health check timed out${plain}"
+  return 1
+}
+
+parse_json_field() {
+  local json="$1"
+  local key="$2"
+  if command -v node >/dev/null 2>&1; then
+    node -e "const j=JSON.parse(process.argv[1]); const v=j[process.argv[2]]; if(v===undefined||v===null) process.exit(2); process.stdout.write(String(v))" "$json" "$key"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; j=json.loads(sys.argv[1]); v=j.get(sys.argv[2]);
+assert v is not None; print(v, end="")' "$json" "$key"
+  else
+    echo -e "${red}Need node or python3 to parse API JSON${plain}"
+    exit 1
+  fi
+}
+
+install_colocated_edge() {
+  echo ""
+  echo -e "${yellow}Installing co-located Edge node on this server...${plain}"
+  wait_master_health || return 1
+
+  # ثبت توی دیتابیس Master تا توی پنل «مدیریت نودها» دیده بشه
+  local node_json
+  node_json="$(curl -fsS -X POST "http://127.0.0.1:${HTTP_PORT}/api/nodes" \
+    -H "Content-Type: application/json" \
+    -H "x-admin-token: ${ADMIN_TOKEN}" \
+    -d "{\"title\":\"نود محلی (همین سرور)\",\"host\":\"${PUBLIC_IP}\",\"port\":${EDGE_PORT},\"notes\":\"Co-located with Master — installed by install.sh\"}")" || {
+    echo -e "${red}Failed to register Edge node in Master panel${plain}"
+    return 1
+  }
+
+  local bootstrap_url node_id
+  bootstrap_url="$(parse_json_field "$node_json" "bootstrapUrl")"
+  node_id="$(parse_json_field "$node_json" "id")"
+
+  echo -e "${green}Registered in Admin → Nodes${plain}"
+  echo -e "Title:    نود محلی (همین سرور)"
+  echo -e "Node id:  ${node_id}"
+  echo -e "Address:  ${PUBLIC_IP}:${EDGE_PORT}"
+  echo -e "Bootstrap: ${bootstrap_url}"
+
+  # کد Master رو برای Edge کپی کن تا نسخه یکی باشه (بدون وابستگی به GitHub)
+  local edge_dir="/opt/syncpage-node"
+  mkdir -p "$edge_dir"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '.env' \
+      --exclude '.git' \
+      "${INSTALL_DIR}/" "${edge_dir}/"
+  else
+    find "$edge_dir" -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} + 2>/dev/null || true
+    cp -a "${INSTALL_DIR}/." "${edge_dir}/"
+    rm -rf "${edge_dir}/.git" "${edge_dir}/.env" 2>/dev/null || true
+  fi
+
+  SYNCPAGE_COLOCATED=1 SYNCPAGE_SKIP_CLONE=1 SYNCPAGE_NODE_DIR="$edge_dir" \
+    bash "${INSTALL_DIR}/install-node.sh" "$bootstrap_url"
+
+  echo -e "${yellow}Verifying Edge node (status → ONLINE in panel)...${plain}"
+  local verify_ok=0
+  local v
+  for v in 1 2 3 4 5; do
+    if curl -fsS -X POST "http://127.0.0.1:${HTTP_PORT}/api/nodes/${node_id}/verify" \
+      -H "x-admin-token: ${ADMIN_TOKEN}" >/dev/null 2>&1; then
+      verify_ok=1
+      break
+    fi
+    sleep 3
+  done
+  if [[ "$verify_ok" -eq 1 ]]; then
+    echo -e "${green}Edge node verified ONLINE — visible in Admin → Nodes${plain}"
+  else
+    echo -e "${yellow}Edge is registered in the panel but still PENDING/OFFLINE — open Admin → Nodes and click Verify${plain}"
+  fi
+
+  EDGE_NODE_ID="$node_id"
+}
+
+EDGE_NODE_ID=""
+if [[ "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
+  install_colocated_edge || echo -e "${yellow}Co-located Edge install skipped/failed — you can add a node from the panel later${plain}"
+fi
+
 echo ""
 echo -e "${green}════════════════════════════════════════${plain}"
 echo -e "${green}SyncPage Master installed successfully${plain}"
@@ -171,8 +273,19 @@ echo -e "Panel:       ${PUBLIC_BASE_URL}/admin"
 echo -e "Admin token: ${ADMIN_TOKEN}"
 echo -e "Install dir: ${INSTALL_DIR}"
 echo -e "RabbitMQ:    ${RABBITMQ_PUBLIC_URL}"
+if [[ -n "$EDGE_NODE_ID" ]]; then
+  echo -e "Local Edge:  http://${PUBLIC_IP}:${EDGE_PORT}/api/health  (id: ${EDGE_NODE_ID})"
+  echo -e "Edge dir:    /opt/syncpage-node"
+fi
 echo ""
 echo -e "Health: curl -fsS ${PUBLIC_BASE_URL}/api/health"
-echo -e "Logs:   docker compose -f ${INSTALL_DIR}/docker-compose.master.yml logs -f"
+echo -e "Start:  docker compose -f docker-compose.master.yml --env-file .env up -d"
+echo -e "Logs:   docker compose -f docker-compose.master.yml --env-file .env logs -f"
+echo -e "Stop:   docker compose -f docker-compose.master.yml --env-file .env down"
 echo ""
-echo -e "${yellow}Next: open Admin → Nodes → Add node → copy install command${plain}"
+echo -e "${yellow}Important: do NOT run plain 'docker compose up' here.${plain}"
+echo -e "${yellow}That file is for local dev (nginx:80) and conflicts with Master app:${HTTP_PORT}.${plain}"
+if [[ ! "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
+  echo ""
+  echo -e "${yellow}Next: open Admin → Nodes → Add node → copy install command${plain}"
+fi

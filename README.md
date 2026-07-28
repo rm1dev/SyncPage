@@ -23,12 +23,13 @@ NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
 ```
 
-The script will prompt for setup details (with sensible defaults): installation path, HTTP port, admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`.
+The script will prompt for setup details (with sensible defaults): installation path, HTTP port (default `1313`), admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`. It also asks whether to install an **Edge node on the same server** (default **y**); if yes, Edge listens on a separate port (default `3000`).
 
 After installation:
 
-- Admin Panel: `http://SERVER/admin`
+- Admin Panel: `http://SERVER:1313/admin`
 - The admin token will be printed in the script output.
+- If co-located Edge was installed: `/opt/syncpage-node` and `http://SERVER:3000`
 
 
 
@@ -101,8 +102,10 @@ Production Compose files:
 
 | File                        | Purpose                            |
 | --------------------------- | ---------------------------------- |
-| `docker-compose.master.yml` | Master + Postgres + RabbitMQ       |
+| `docker-compose.master.yml` | Master + Postgres + RabbitMQ (`app` publishes host `HTTP_PORT`, default **1313**; no nginx) |
 | `docker-compose.node.yml`   | Edge + Local Postgres (Remote RMQ) |
+
+On a Master server installed via `install.sh`, always use `docker-compose.master.yml`. Plain `docker compose up` starts the **local** stack (`nginx` on port 80) and can conflict if Master `HTTP_PORT` is also set to 80.
 
 
 Development without full stack containers:
@@ -132,7 +135,7 @@ Edge servers require connectivity to the following Master services:
 
 | Port        | Usage                   | Recommended Firewall Rule |
 | ----------- | ----------------------- | ------------------------- |
-| `80`/`3000` | API + Admin + Bootstrap | Restrict Admin access     |
+| `1313`      | API + Admin + Bootstrap | Restrict Admin access     |
 | `5672`      | AMQP for Edge Nodes     | Whitelist Edge IPs / VPN  |
 | `15672`     | RabbitMQ Management UI  | Operators only            |
 

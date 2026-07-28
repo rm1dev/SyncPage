@@ -129,6 +129,13 @@ export class NodesService {
     };
   }
 
+  /** آدرس‌های health برای Verify — نود هم‌محل ممکنه فقط از host.docker.internal جواب بده */
+  private healthUrls(node: EdgeNode): string[] {
+    const hosts = [node.host, 'host.docker.internal'];
+    const unique = [...new Set(hosts.filter(Boolean))];
+    return unique.map((h) => `http://${h}:${node.port}/api/health`);
+  }
+
   /**
    * از Master به health نود HTTP می‌زنیم و وضعیت رو آپدیت می‌کنیم
    */
@@ -136,53 +143,59 @@ export class NodesService {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
     if (!node) throw new NotFoundException('Node not found');
 
-    const url = `http://${node.host}:${node.port}/api/health`;
-    try {
-      const { data, status } = await axios.get(url, {
-        timeout: 8000,
-        validateStatus: () => true,
-      });
+    const urls = this.healthUrls(node);
+    let lastMessage = 'No health URL tried';
 
-      if (status !== 200 || !data?.ok) {
-        throw new Error(`Health returned HTTP ${status}`);
+    for (const url of urls) {
+      try {
+        const { data, status } = await axios.get(url, {
+          timeout: 8000,
+          validateStatus: () => true,
+        });
+
+        if (status !== 200 || !data?.ok) {
+          lastMessage = `Health returned HTTP ${status} (${url})`;
+          continue;
+        }
+
+        const role = String(data.role || '').toUpperCase();
+        if (role !== 'EDGE' && role !== 'SLAVE') {
+          lastMessage = `Unexpected role: ${data.role} (${url})`;
+          continue;
+        }
+
+        if (data.nodeId && data.nodeId !== node.id) {
+          lastMessage = `Node ID mismatch: expected ${node.id}, got ${data.nodeId}`;
+          continue;
+        }
+
+        const updated = await this.prisma.edgeNode.update({
+          where: { id },
+          data: {
+            status: EdgeNodeStatus.ONLINE,
+            lastSeenAt: new Date(),
+            lastError: null,
+          },
+        });
+        this.logger.log(`Node verified online: ${node.title} via ${url}`);
+        return this.withInstallMeta(updated);
+      } catch (err) {
+        lastMessage = err instanceof Error ? err.message : String(err);
       }
-
-      const role = String(data.role || '').toUpperCase();
-      if (role !== 'EDGE' && role !== 'SLAVE') {
-        throw new Error(`Unexpected role: ${data.role}`);
-      }
-
-      if (data.nodeId && data.nodeId !== node.id) {
-        throw new Error(
-          `Node ID mismatch: expected ${node.id}, got ${data.nodeId}`,
-        );
-      }
-
-      const updated = await this.prisma.edgeNode.update({
-        where: { id },
-        data: {
-          status: EdgeNodeStatus.ONLINE,
-          lastSeenAt: new Date(),
-          lastError: null,
-        },
-      });
-      this.logger.log(`Node verified online: ${node.title}`);
-      return this.withInstallMeta(updated);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const updated = await this.prisma.edgeNode.update({
-        where: { id },
-        data: {
-          status: EdgeNodeStatus.OFFLINE,
-          lastError: message.slice(0, 500),
-        },
-      });
-      this.logger.warn(`Node verify failed (${node.title}): ${message}`);
-      throw new BadRequestException({
-        message: `Verify failed: ${message}`,
-        node: this.withInstallMeta(updated),
-      });
     }
+
+    const updated = await this.prisma.edgeNode.update({
+      where: { id },
+      data: {
+        status: EdgeNodeStatus.OFFLINE,
+        lastError: lastMessage.slice(0, 500),
+      },
+    });
+    this.logger.warn(`Node verify failed (${node.title}): ${lastMessage}`);
+    throw new BadRequestException({
+      message: `Verify failed: ${lastMessage}`,
+      node: this.withInstallMeta(updated),
+    });
   }
 
   /** صف‌های همه نودها برای Outbox */
