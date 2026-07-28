@@ -23,7 +23,12 @@ NestJS + PostgreSQL + RabbitMQ (+ Nginx in local compose) supporting two roles:
 bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.sh)
 ```
 
-The script will prompt for setup details (with sensible defaults): optional **domain**, HTTP port (`80` if domain, else `1313`), admin token, Postgres/RabbitMQ passwords, `PUBLIC_BASE_URL`, `MASTER_INTERNAL_URL`, and `RABBITMQ_PUBLIC_URL`. It also asks whether to install an **Edge node on the same server** (default **y**); if yes, Edge listens on a separate port (default `3000`).
+The script will prompt for setup details (with short English hints). Important fields:
+
+- **Public domain** (optional): hostname only, e.g. `land.sikaap.com`. Leave empty to use server IP. With a domain, panel URL becomes `https://DOMAIN/spadmin` automatically (no separate “Public base URL” question).
+- **HTTP port**: nginx listen port (`80` with domain / CDN, else `1313`)
+- **Master internal URL** / **RabbitMQ URL**: prefer direct server IP (not CDN)
+- **Edge on this server?** (default **y**) — separate port (default `3000`)
 
 After installation:
 

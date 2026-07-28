@@ -12,7 +12,7 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 plain='\033[0m'
 
-# ریپو و برنچ ثابته؛ دیگه از کاربر نمی‌پرسیم
+# Repo/branch are fixed — not prompted
 SYNCPAGE_GITHUB_REPO="rm1dev/SyncPage"
 SYNCPAGE_GITHUB_BRANCH="main"
 INSTALL_DIR_DEFAULT="/opt/syncpage"
@@ -40,6 +40,11 @@ prompt() {
   else
     read -rp "$(echo -e "${blue}${q}${plain}: ")" REPLY || true
   fi
+}
+
+# Short hint before a prompt
+note() {
+  echo -e "${yellow}$*${plain}"
 }
 
 detect_public_ip() {
@@ -70,24 +75,41 @@ echo -e "Repo: ${SYNCPAGE_GITHUB_REPO} @ ${SYNCPAGE_GITHUB_BRANCH}"
 echo ""
 
 PUBLIC_IP="$(detect_public_ip)"
+echo -e "Detected server IP: ${yellow}${PUBLIC_IP}${plain}"
+echo ""
 
 prompt "Install directory" "$INSTALL_DIR_DEFAULT"
 INSTALL_DIR="$REPLY"
 
-# دامنه اختیاری — خالی یعنی فقط IP
-prompt "Domain (optional, empty = use IP)" ""
+echo ""
+note "If you use a CDN/SSL domain, enter the hostname only (no https://)."
+note "Example: land.sikaap.com"
+note "Leave empty to use this server IP instead."
+prompt "Public domain (optional)" ""
 DOMAIN_RAW="$REPLY"
-# اگر کاربر با https:// یا / آخر وارد کرد، تمیزش می‌کنیم
-DOMAIN="$(echo "$DOMAIN_RAW" | sed -E 's#^https?://##; s#/.*$##; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+# Strip protocol and path if pasted
+DOMAIN="$(echo "$DOMAIN_RAW" | sed -E 's#^https?://##; s#/.*$##; s/^[[:space:]]+//; s/[[:space:]]+$//' | tr '[:upper:]' '[:lower:]')"
 
 if [[ -n "$DOMAIN" ]]; then
   HTTP_PORT_DEFAULT="80"
+  # Public URL is HTTPS when a domain is set (CDN/SSL)
+  PUBLIC_BASE_URL="https://${DOMAIN}"
+  echo -e "Panel URL will be: ${green}${PUBLIC_BASE_URL}/spadmin${plain}"
 else
   HTTP_PORT_DEFAULT="1313"
+  PUBLIC_BASE_URL=""  # set after HTTP port is known
+  echo -e "No domain — panel will use server IP."
 fi
 
-prompt "HTTP publish port (host, nginx)" "$HTTP_PORT_DEFAULT"
+echo ""
+note "Host port for nginx (CDN origin is usually port 80)."
+prompt "HTTP publish port (nginx)" "$HTTP_PORT_DEFAULT"
 HTTP_PORT="$REPLY"
+
+if [[ -z "$DOMAIN" ]]; then
+  PUBLIC_BASE_URL="http://${PUBLIC_IP}:${HTTP_PORT}"
+  echo -e "Panel URL will be: ${green}${PUBLIC_BASE_URL}/spadmin${plain}"
+fi
 
 prompt "App internal port" "$APP_PORT_DEFAULT"
 APP_PORT="$REPLY"
@@ -101,23 +123,19 @@ DB_PASS="$REPLY"
 prompt "RabbitMQ password" "$RMQ_PASS_DEFAULT"
 RMQ_PASS="$REPLY"
 
-if [[ -n "$DOMAIN" ]]; then
-  PUBLIC_BASE_DEFAULT="https://${DOMAIN}"
-else
-  PUBLIC_BASE_DEFAULT="http://${PUBLIC_IP}:${HTTP_PORT}"
-fi
-
-prompt "Public base URL (panel / bootstrap)" "$PUBLIC_BASE_DEFAULT"
-PUBLIC_BASE_URL="$REPLY"
-
-# Edge پکیج را مستقیم از IP Master بگیرد (نه لزوماً از CDN)
-prompt "Master internal URL (Edge package download)" "http://${PUBLIC_IP}:${HTTP_PORT}"
+echo ""
+note "Internal Master URL for Edge package download — prefer this server IP (not CDN)."
+prompt "Master internal URL" "http://${PUBLIC_IP}:${HTTP_PORT}"
 MASTER_INTERNAL_URL="$REPLY"
 
-prompt "RabbitMQ public URL (for Edge nodes)" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:5672"
+echo ""
+note "AMQP URL Edge nodes use for queues — must be Master IP, not the CDN domain."
+prompt "RabbitMQ URL for Edge nodes" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:5672"
 RABBITMQ_PUBLIC_URL="$REPLY"
 
-prompt "Install Edge node on this server too? (y/n)" "y"
+echo ""
+note "Also install an Edge node on this same server? (landings on a separate port)"
+prompt "Install Edge on this server too? (y/n)" "y"
 INSTALL_LOCAL_EDGE="$REPLY"
 
 EDGE_PORT="$EDGE_PORT_DEFAULT"
@@ -150,7 +168,7 @@ else
   git clone --branch "$SYNCPAGE_GITHUB_BRANCH" --depth 1 "$REPO_URL" .
 fi
 
-# .env برای Master
+# .env for Master
 cat > .env <<EOF
 NODE_ROLE=MASTER
 PORT=${APP_PORT}
@@ -223,12 +241,12 @@ install_colocated_edge() {
   echo -e "${yellow}Installing co-located Edge node on this server...${plain}"
   wait_master_health || return 1
 
-  # ثبت توی دیتابیس Master تا توی پنل «مدیریت نودها» دیده بشه
+  # Register in Master DB so it appears under Admin → Nodes
   local node_json
   node_json="$(curl -fsS -X POST "http://127.0.0.1:${HTTP_PORT}/api/nodes" \
     -H "Content-Type: application/json" \
     -H "x-admin-token: ${ADMIN_TOKEN}" \
-    -d "{\"title\":\"نود محلی (همین سرور)\",\"host\":\"${PUBLIC_IP}\",\"port\":${EDGE_PORT},\"notes\":\"Co-located with Master — installed by install.sh\"}")" || {
+    -d "{\"title\":\"Local Edge (same server)\",\"host\":\"${PUBLIC_IP}\",\"port\":${EDGE_PORT},\"notes\":\"Co-located with Master — installed by install.sh\"}")" || {
     echo -e "${red}Failed to register Edge node in Master panel${plain}"
     return 1
   }
@@ -238,12 +256,12 @@ install_colocated_edge() {
   node_id="$(parse_json_field "$node_json" "id")"
 
   echo -e "${green}Registered in Admin → Nodes${plain}"
-  echo -e "Title:    نود محلی (همین سرور)"
+  echo -e "Title:    Local Edge (same server)"
   echo -e "Node id:  ${node_id}"
   echo -e "Address:  ${PUBLIC_IP}:${EDGE_PORT}"
   echo -e "Bootstrap: ${bootstrap_url}"
 
-  # کد Master رو برای Edge کپی کن تا نسخه یکی باشه (بدون وابستگی به GitHub)
+  # Copy Master sources so Edge matches this install (no GitHub dependency)
   local edge_dir="/opt/syncpage-node"
   mkdir -p "$edge_dir"
   if command -v rsync >/dev/null 2>&1; then

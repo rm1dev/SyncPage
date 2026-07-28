@@ -44,14 +44,13 @@ services:
     env_file: .env
     environment:
       NODE_ROLE: MASTER
+      # PORT / DATABASE_URL / RABBITMQ_* از .env می‌آیند؛ اینجا فقط نقش را قفل می‌کنیم
       PORT: ${APP_PORT:-3000}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@db:5432/${POSTGRES_DB:-syncpage}?schema=public
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-syncpage}:${RABBITMQ_PASS:-syncpage}@rabbitmq:5672
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp
     expose:
-      - "${APP_PORT:-3000}"
+      - "3000"
     # برای Verify نود هم‌محل روی host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -61,10 +60,11 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-3000}/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 18
+      start_period: 60s
     restart: unless-stopped
 
   nginx:
