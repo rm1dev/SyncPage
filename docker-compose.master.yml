@@ -22,11 +22,12 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
-      # با load_definitions این دو تا seed نمی‌شن؛ یوزر از rabbitmq/definitions.json میاد
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-syncpage}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-syncpage}
+    entrypoint: ["/bin/sh", "/entrypoint-wrapper.sh"]
     volumes:
-      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./rabbitmq/definitions.template.json:/etc/rabbitmq/definitions.template.json:ro
+      - ./rabbitmq/docker-entrypoint.sh:/entrypoint-wrapper.sh:ro
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - rmqdata:/var/lib/rabbitmq
     ports:
@@ -46,7 +47,7 @@ services:
     environment:
       NODE_ROLE: MASTER
       PORT: ${APP_PORT:-3000}
-      # پسورد باید با rabbitmq/definitions.json یکی باشه (پیش‌فرض: syncpage)
+      # همون RABBITMQ_PASS که به بروکر هم داده می‌شه
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-syncpage}:${RABBITMQ_PASS:-syncpage}@rabbitmq:5672
       DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@db:5432/${POSTGRES_DB:-syncpage}?schema=public
     volumes:

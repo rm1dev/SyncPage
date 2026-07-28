@@ -2,7 +2,7 @@
   "users": [
     {
       "name": "syncpage",
-      "password": "syncpage",
+      "password": "__RABBITMQ_PASS__",
       "tags": ["administrator"]
     }
   ],
