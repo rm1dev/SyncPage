@@ -5,9 +5,12 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 ENV_FILE ?= .env
-COMPOSE_MASTER := docker compose -f docker-compose.master.yml --env-file $(ENV_FILE)
-COMPOSE_NODE   := docker compose -f docker-compose.node.yml --env-file $(ENV_FILE)
-COMPOSE_LOCAL  := docker compose
+
+# اگه کاربر به docker.sock دسترسی نداشت، با sudo می‌ریم جلو
+DOCKER ?= $(shell docker info >/dev/null 2>&1 && echo docker || echo "sudo docker")
+COMPOSE_MASTER := $(DOCKER) compose -f docker-compose.master.yml --env-file $(ENV_FILE)
+COMPOSE_NODE   := $(DOCKER) compose -f docker-compose.node.yml --env-file $(ENV_FILE)
+COMPOSE_LOCAL  := $(DOCKER) compose
 
 .PHONY: help \
 	master-up master-down master-restart master-build master-logs master-ps master-pull \
@@ -23,6 +26,7 @@ help: ## Show available targets
 	@echo "Local (dev stack):    make local-up  | local-down  | local-logs  | smoke"
 	@echo ""
 	@echo "ENV_FILE default: $(ENV_FILE)  (override: make master-up ENV_FILE=.env.prod)"
+	@echo "DOCKER binary:    $(DOCKER)  (override: make master-ps DOCKER='sudo docker')"
 	@echo ""
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
