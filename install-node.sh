@@ -61,7 +61,6 @@ verify_amqp_from_app() {
     set +e
     out="$(docker compose -f "$compose_file" --env-file .env exec -T app node -e '
 const amqp=require("amqplib");
-const net=require("net");
 (async()=>{
   const url=process.env.RABBITMQ_URL||"";
   const q=process.env.RABBITMQ_QUEUE||"";
@@ -71,14 +70,10 @@ const net=require("net");
     const u=new URL(url);
     host=u.hostname; port=Number(u.port||5672);
   } catch {}
-  await new Promise((resolve,reject)=>{
-    const s=net.connect(port,host,()=>{s.destroy();resolve();});
-    s.setTimeout(8000,()=>{s.destroy();reject(new Error("tcp timeout "+host+":"+port));});
-    s.on("error",e=>reject(new Error("tcp fail "+e.message)));
-  });
-  console.log("tcp ok "+host+":"+port);
+  // فقط یک اتصال AMQP — tcp جداگانه قبلش نزن (روی بعضی VPS اتصال دوم ETIMEDOUT می‌شه)
+  console.log("try amqp "+host+":"+port+" queue="+q);
   try{
-    const c=await amqp.connect(url,{timeout:10000});
+    const c=await amqp.connect(url);
     const ch=await c.createChannel();
     const info=await ch.assertQueue(q,{durable:true});
     console.log("amqp ok queue="+info.queue+" messages="+info.messageCount);
@@ -92,6 +87,26 @@ const net=require("net");
     echo "$out"
     if [[ "$rc" -eq 0 ]]; then
       return 0
+    fi
+    # اگه exec به کانتینر در حال اجرا نشد، با docker run --network host تست کن
+    if [[ "$out" == *"not running"* ]] || [[ "$out" == *"is not running"* ]] || [[ "$rc" -ne 0 && "$i" -eq 1 ]]; then
+      set +e
+      out="$(docker run --rm --network host --env-file .env "$(basename "$(pwd)")-app" node -e '
+const amqp=require("amqplib");
+(async()=>{
+  try{
+    const c=await amqp.connect(process.env.RABBITMQ_URL);
+    const ch=await c.createChannel();
+    await ch.assertQueue(process.env.RABBITMQ_QUEUE,{durable:true});
+    console.log("amqp ok (docker run)");
+    await c.close();
+  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
+})();
+' 2>&1)"
+      rc=$?
+      set -e
+      echo "$out"
+      [[ "$rc" -eq 0 ]] && return 0
     fi
     echo -e "${yellow}AMQP attempt ${i}/8 failed — retry...${plain}"
     sleep 3
