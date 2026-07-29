@@ -39,6 +39,16 @@ async function bootstrap() {
 
   app.useStaticAssets(join(process.cwd(), 'public'), { prefix: '/public/' });
 
+  // روی Master روت دامنه بره به پنل (قبلاً nginx این کار رو می‌کرد)
+  if (isMaster()) {
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (req.method === 'GET' && (req.path === '/' || req.path === '')) {
+        return res.redirect(302, '/spadmin');
+      }
+      return next();
+    });
+  }
+
   // سرو پیش‌نمایش و fallback استاتیک
   const tempPath = process.env.TEMP_PATH || './temp';
   const staticPath = process.env.STATIC_PAGES_PATH || './static_pages';

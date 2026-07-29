@@ -107,36 +107,23 @@ prompt "Install directory" "$INSTALL_DIR_DEFAULT"
 INSTALL_DIR="$REPLY"
 
 echo ""
-note "If you use a CDN/SSL domain, enter the hostname only (no https://)."
-note "Example: landing.your-domain.com"
-note "Leave empty to use this server IP instead."
+note "Optional landing/CDN hostname only (no https://). Example: landing.your-domain.com"
+note "Admin panel stays on this server IP + dashboard port — do NOT put /spadmin behind the landing LB."
 prompt "Public domain (optional)" ""
 DOMAIN_RAW="$REPLY"
 # Strip protocol and path if pasted
 DOMAIN="$(echo "$DOMAIN_RAW" | sed -E 's#^https?://##; s#/.*$##; s/^[[:space:]]+//; s/[[:space:]]+$//' | tr '[:upper:]' '[:lower:]')"
 
-if [[ -n "$DOMAIN" ]]; then
-  HTTP_PORT_DEFAULT="80"
-  # Public URL is HTTPS when a domain is set (CDN/SSL)
-  PUBLIC_BASE_URL="https://${DOMAIN}"
-  echo -e "Panel URL will be: ${green}${PUBLIC_BASE_URL}/spadmin${plain}"
-else
-  HTTP_PORT_DEFAULT="1313"
-  PUBLIC_BASE_URL=""  # set after HTTP port is known
-  echo -e "No domain — panel will use server IP."
-fi
-
 echo ""
-note "Host port for nginx (CDN origin is usually port 80)."
-prompt "HTTP publish port (nginx)" "$HTTP_PORT_DEFAULT"
+note "Host port for the Master dashboard and API (Nest app, no nginx)."
+prompt "Dashboard HTTP port" "$HTTP_PORT_DEFAULT"
 HTTP_PORT="$REPLY"
 
-if [[ -z "$DOMAIN" ]]; then
-  PUBLIC_BASE_URL="http://${PUBLIC_IP}:${HTTP_PORT}"
-  echo -e "Panel URL will be: ${green}${PUBLIC_BASE_URL}/spadmin${plain}"
-fi
+# پنل همیشه مستقیم روی همین سرور — نه دامنهٔ لندینگ پشت LB
+PUBLIC_BASE_URL="http://${PUBLIC_IP}:${HTTP_PORT}"
+echo -e "Panel URL will be: ${green}${PUBLIC_BASE_URL}/spadmin${plain}"
 
-prompt "App internal port" "$APP_PORT_DEFAULT"
+prompt "App container port" "$APP_PORT_DEFAULT"
 APP_PORT="$REPLY"
 
 prompt "Admin token" "$ADMIN_TOKEN_DEFAULT"
@@ -348,7 +335,7 @@ echo -e "Stop:   make master-down"
 echo -e "Help:   make help"
 echo ""
 echo -e "${yellow}Important: do NOT run plain 'docker compose up' here (local dual stack).${plain}"
-echo -e "${yellow}Master panel path is always /spadmin (via nginx on host port ${HTTP_PORT}).${plain}"
+echo -e "${yellow}Master panel: ${PUBLIC_BASE_URL}/spadmin  (host port ${HTTP_PORT} → app)${plain}"
 if [[ ! "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
   echo ""
   echo -e "${yellow}Next: open Admin → Nodes → Add node → copy install command${plain}"

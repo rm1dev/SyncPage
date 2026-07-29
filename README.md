@@ -25,17 +25,15 @@ bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install.s
 
 The script will prompt for setup details (with short English hints). Important fields:
 
-- **Public domain** (optional): hostname only, e.g. `landing.your-domain.com`. Leave empty to use server IP. With a domain, panel URL becomes `https://DOMAIN/spadmin` automatically (no separate “Public base URL” question).
-- **HTTP port**: nginx listen port (`80` with domain / CDN, else `1313`)
+- **Public domain** (optional): landing/CDN hostname only, e.g. `landing.your-domain.com`. Leave empty if unused. **Do not** put `/spadmin` behind the landing load balancer.
+- **Dashboard HTTP port**: host port for Master panel/API (default **`1313`**)
 - **Master internal URL** / **RabbitMQ URL**: prefer direct server IP (not CDN)
 - **Edge on this server?** (default **y**) — separate port (default `3000`)
 
 After installation:
 
-- Admin Panel is always under **`/spadmin`**:
-  - with domain (CDN/SSL): `https://YOUR_DOMAIN/spadmin`
-  - without domain: `http://SERVER:1313/spadmin`
-- Master is fronted by **nginx** (`docker-compose.master.yml`)
+- Admin Panel: **`http://SERVER:1313/spadmin`** (or the dashboard port you chose) — always `/spadmin`
+- Master publishes the Nest `app` directly (`docker-compose.master.yml`, no nginx)
 - The admin token will be printed in the script output.
 - If co-located Edge was installed: `/opt/syncpage-node` and `http://SERVER:3000`
 
@@ -122,7 +120,7 @@ Production Compose files:
 
 | File                        | Purpose                            |
 | --------------------------- | ---------------------------------- |
-| `docker-compose.master.yml` | nginx + Master + Postgres + RabbitMQ (`HTTP_PORT` → nginx:80; panel at `/spadmin`) |
+| `docker-compose.master.yml` | Master + Postgres + RabbitMQ (`HTTP_PORT` → app; panel at `/spadmin`) |
 | `docker-compose.node.yml`   | Edge + Local Postgres (Remote RMQ) |
 
 On a Master server installed via `install.sh`, always use `docker-compose.master.yml`. Plain `docker compose up` starts the **local** dual-role stack and can conflict on port 80.
@@ -172,7 +170,7 @@ Edge servers require connectivity to the following Master services:
 
 | Port        | Usage                   | Recommended Firewall Rule |
 | ----------- | ----------------------- | ------------------------- |
-| `80` / `1313` | nginx → API + `/spadmin` + Bootstrap | Restrict Admin; use `80` behind CDN |
+| `1313` (default) | Master app → API + `/spadmin` + Bootstrap | Restrict Admin; do not LB with Edge landings |
 
 | `5672`      | AMQP for Edge Nodes     | Whitelist Edge IPs / VPN  |
 | `15672`     | RabbitMQ Management UI  | Operators only            |
