@@ -37,6 +37,49 @@ install_docker() {
   systemctl enable --now docker || true
 }
 
+# استک قبلی رو با هر دو مدل compose می‌بندیم تا پورت/کانتینر گیر نکنه
+stop_existing_edge() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  (
+    cd "$dir"
+    for f in docker-compose.node.remote.yml docker-compose.node.host.yml docker-compose.node.yml; do
+      [[ -f "$f" ]] || continue
+      docker compose -f "$f" --env-file .env down --remove-orphans 2>/dev/null || \
+        docker compose -f "$f" down --remove-orphans 2>/dev/null || true
+    done
+  ) || true
+}
+
+# بعد از بالا اومدن، چک می‌کنیم واقعاً به RabbitMQ وصل می‌شیم
+verify_amqp_from_app() {
+  local compose_file="$1"
+  echo -e "${yellow}Verifying AMQP from app container...${plain}"
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    if docker compose -f "$compose_file" --env-file .env exec -T app node -e '
+const amqp=require("amqplib");
+(async()=>{
+  const url=process.env.RABBITMQ_URL;
+  const q=process.env.RABBITMQ_QUEUE;
+  if(!url||!q){ console.error("missing RABBITMQ_URL/QUEUE"); process.exit(2); }
+  try{
+    const c=await amqp.connect(url,{timeout:10000});
+    const ch=await c.createChannel();
+    const info=await ch.checkQueue(q);
+    console.log("amqp ok consumers="+info.consumerCount+" messages="+info.messageCount);
+    await c.close();
+    process.exit(0);
+  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
+})();
+' 2>/dev/null; then
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+
 echo -e "${green}SyncPage Edge Node installer (silent)${plain}"
 echo -e "Bootstrap: ${BOOTSTRAP_URL}"
 
@@ -52,7 +95,7 @@ parse_json() {
   if command -v node >/dev/null 2>&1; then
     node -e "const j=JSON.parse(process.argv[1]); const v=j[process.argv[2]]; if(v===undefined||v===null) process.exit(2); process.stdout.write(String(v))" "$CONFIG_JSON" "$key"
   elif command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import json,sys; j=json.loads(sys.argv[1]); v=j.get(sys.argv[2]); 
+    python3 -c 'import json,sys; j=json.loads(sys.argv[1]); v=j.get(sys.argv[2]);
 assert v is not None; print(v, end="")' "$CONFIG_JSON" "$key"
   else
     echo -e "${red}Need node or python3 to parse bootstrap JSON${plain}"
@@ -92,6 +135,9 @@ echo -e "Bind port: ${PORT}"
 install_docker
 need_cmd git
 
+# قبل از دست زدن به سورس، استک قدیمی رو ببند
+stop_existing_edge "$INSTALL_DIR"
+
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
@@ -115,14 +161,19 @@ else
   git clone --branch "$GITHUB_BRANCH" --depth 1 "$REPO_URL" .
 fi
 
-# نود ریموت: host network تا به RabbitMQ Master از داخل Docker timeout نخوره
+# نود ریموت: compose جدا با host network (بدون merge با bridge)
+# نود هم‌محل: bridge + host.docker.internal
 EDGE_NETWORK_MODE="bridge"
 POSTGRES_HOST_PORT="5433"
-COMPOSE_FILES=(-f docker-compose.node.yml)
+COMPOSE_FILE="docker-compose.node.yml"
 if [[ "$COLOCATED" != "1" ]]; then
   EDGE_NETWORK_MODE="host"
-  COMPOSE_FILES+=(-f docker-compose.node.host.yml)
-  echo -e "${yellow}Remote edge: using host network for AMQP egress${plain}"
+  if [[ ! -f docker-compose.node.remote.yml ]]; then
+    echo -e "${red}docker-compose.node.remote.yml missing — repo too old?${plain}"
+    exit 1
+  fi
+  COMPOSE_FILE="docker-compose.node.remote.yml"
+  echo -e "${yellow}Remote edge: host network compose (${COMPOSE_FILE})${plain}"
 fi
 
 # bridge → hostname db:5432 | host network → 127.0.0.1:5433
@@ -162,17 +213,21 @@ OUTBOX_MAX_ATTEMPTS=10
 APP_PORT=${PORT}
 HTTP_PORT=${PORT}
 EDGE_NETWORK_MODE=${EDGE_NETWORK_MODE}
+COMPOSE_FILE=${COMPOSE_FILE}
 SYNCPAGE_GITHUB_REPO=${GITHUB_REPO}
 SYNCPAGE_GITHUB_BRANCH=${GITHUB_BRANCH}
 EOF
 
-echo -e "${yellow}Building and starting Edge node...${plain}"
-docker compose "${COMPOSE_FILES[@]}" --env-file .env up -d --build
+# دوباره استک قبلی رو با .env جدید ببند (پروژهٔ compose ممکنه اسم متفاوت داشته باشه)
+stop_existing_edge "$INSTALL_DIR"
 
-# صبر کوتاه برای healthy شدن
+echo -e "${yellow}Building and starting Edge node (${COMPOSE_FILE})...${plain}"
+docker compose -f "$COMPOSE_FILE" --env-file .env up -d --build --force-recreate
+
+# صبر برای healthy شدن HTTP
 sleep 5
 HEALTH_OK=0
-for i in 1 2 3 4 5 6 7 8 9 10; do
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
     HEALTH_OK=1
     break
@@ -180,18 +235,45 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 3
 done
 
-echo ""
+AMQP_OK=0
 if [[ "$HEALTH_OK" -eq 1 ]]; then
-  echo -e "${green}Edge node installed and healthy${plain}"
+  if verify_amqp_from_app "$COMPOSE_FILE"; then
+    AMQP_OK=1
+  fi
+fi
+
+# برای ریموت حتماً network_mode=host باشه
+if [[ "$EDGE_NETWORK_MODE" == "host" ]]; then
+  APP_CID="$(docker compose -f "$COMPOSE_FILE" --env-file .env ps -q app 2>/dev/null | head -1 || true)"
+  if [[ -n "$APP_CID" ]]; then
+    NET_MODE="$(docker inspect "$APP_CID" --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)"
+    echo -e "App NetworkMode: ${NET_MODE}"
+    if [[ "$NET_MODE" != "host" ]]; then
+      echo -e "${red}Expected NetworkMode=host but got: ${NET_MODE}${plain}"
+      AMQP_OK=0
+    fi
+  fi
+fi
+
+echo ""
+if [[ "$HEALTH_OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
+  echo -e "${green}Edge node installed, healthy, and AMQP connected${plain}"
+elif [[ "$HEALTH_OK" -eq 1 ]]; then
+  echo -e "${red}Edge HTTP is up but AMQP to Master failed${plain}"
+  echo -e "${yellow}Check: RABBITMQ_URL, Master :5672 firewall, and compose file${plain}"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs --tail=80 app"
+  exit 1
 else
   echo -e "${yellow}Edge node started — health not ready yet (check logs)${plain}"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs --tail=80 app"
 fi
 echo -e "Title:  ${TITLE}"
 echo -e "NodeId: ${NODE_ID}"
 echo -e "Host:   ${HOST}:${PORT}"
 echo -e "Queue:  ${QUEUE}"
 echo -e "Dir:    ${INSTALL_DIR}"
+echo -e "Mode:   ${EDGE_NETWORK_MODE} (${COMPOSE_FILE})"
 echo -e "Health: curl -fsS http://127.0.0.1:${PORT}/api/health"
-echo -e "Logs:   docker compose -f ${INSTALL_DIR}/docker-compose.node.yml logs -f"
+echo -e "Logs:   docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
 echo ""
 echo -e "${green}Back on Master panel → click Verify for this node${plain}"

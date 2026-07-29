@@ -1,5 +1,6 @@
 # =============================================================================
-# SyncPage Edge Node — production stack (no local RabbitMQ)
+# SyncPage Edge Node — هم‌محل با Master (Docker bridge + host.docker.internal)
+# نود ریموت جدا از Master → docker-compose.node.remote.yml (host network)
 # Usage: docker compose -f docker-compose.node.yml --env-file .env up -d --build
 # =============================================================================
 services:

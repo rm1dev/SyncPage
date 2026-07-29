@@ -16,6 +16,8 @@ import { isMaster } from './config/role';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      // فقط env کانتینر/سیستم — فایل .env داخل ایمیج نداریم و نباید قاطی بشه
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
     }),
     PrismaModule,
     FormEngineModule,

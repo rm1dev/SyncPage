@@ -36,11 +36,6 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-if [[ ! -f docker-compose.node.yml ]]; then
-  echo -e "${red}docker-compose.node.yml missing — wrong directory?${plain}"
-  exit 1
-fi
-
 ENV_BAK="/tmp/syncpage-node.env.$(date +%s).bak"
 cp -a .env "$ENV_BAK"
 echo -e "${yellow}Backed up .env → ${ENV_BAK}${plain}"
@@ -53,9 +48,6 @@ fi
 if grep -q '^SYNCPAGE_GITHUB_BRANCH=' .env 2>/dev/null; then
   BRANCH="$(grep '^SYNCPAGE_GITHUB_BRANCH=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
 fi
-
-# اگه توی .env نیست از مقادیر پیش‌فرض install-node استفاده می‌کنیم
-# (نسخه‌های قدیمی ممکنه این کلیدها رو نداشته باشن)
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   echo -e "${red}Docker / compose required${plain}"
@@ -80,7 +72,6 @@ else
       --exclude '.git' \
       "${TMP}/" "${INSTALL_DIR}/"
   else
-    # بدون rsync: فایل‌های کد رو جایگزین کن
     find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.git' -exec rm -rf {} + 2>/dev/null || true
     cp -a "${TMP}/." "${INSTALL_DIR}/"
     rm -rf "${INSTALL_DIR}/.git"
@@ -97,34 +88,67 @@ PORT="$(grep '^HTTP_PORT=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 PORT="${PORT:-$(grep '^APP_PORT=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)}"
 PORT="${PORT:-3000}"
 
-# اگه از قبل host mode ست شده، یا نود ریموت هست (host.docker.internal توی URL نیست)
-EDGE_NETWORK_MODE="$(grep '^EDGE_NETWORK_MODE=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+EDGE_NETWORK_MODE="$(grep '^EDGE_NETWORK_MODE=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
 RMQ_URL_NOW="$(grep '^RABBITMQ_URL=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
-COMPOSE_FILES=(-f docker-compose.node.yml)
-if [[ "$EDGE_NETWORK_MODE" == "host" ]] || [[ "$RMQ_URL_NOW" != *"host.docker.internal"* ]]; then
-  if [[ ! -f docker-compose.node.host.yml ]]; then
-    echo -e "${red}docker-compose.node.host.yml missing — pull latest repo${plain}"
+COMPOSE_FILE="$(grep '^COMPOSE_FILE=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
+
+# ریموت (نه هم‌محل): همیشه host-network compose
+is_remote=0
+if [[ "$EDGE_NETWORK_MODE" == "host" ]]; then
+  is_remote=1
+elif [[ "$EDGE_NETWORK_MODE" == "bridge" ]]; then
+  is_remote=0
+elif [[ -n "$RMQ_URL_NOW" && "$RMQ_URL_NOW" != *"host.docker.internal"* ]]; then
+  is_remote=1
+fi
+
+if [[ "$is_remote" -eq 1 ]]; then
+  if [[ ! -f docker-compose.node.remote.yml ]]; then
+    echo -e "${red}docker-compose.node.remote.yml missing — pull latest repo${plain}"
     exit 1
   fi
-  COMPOSE_FILES+=(-f docker-compose.node.host.yml)
-  # .env رو برای host network تنظیم کن (بدون عوض کردن پسوردها)
-  if ! grep -q '^EDGE_NETWORK_MODE=host' .env 2>/dev/null; then
+  COMPOSE_FILE="docker-compose.node.remote.yml"
+  # .env رو برای host network یکدست کن
+  if grep -q '^EDGE_NETWORK_MODE=' .env; then
+    sed -i.bak 's/^EDGE_NETWORK_MODE=.*/EDGE_NETWORK_MODE=host/' .env || \
+      sed -i '' 's/^EDGE_NETWORK_MODE=.*/EDGE_NETWORK_MODE=host/' .env
+  else
     echo "EDGE_NETWORK_MODE=host" >> .env
   fi
   if ! grep -q '^POSTGRES_HOST_PORT=' .env 2>/dev/null; then
     echo "POSTGRES_HOST_PORT=5433" >> .env
   fi
-  # DATABASE_URL رو به 127.0.0.1:5433 ببر اگه هنوز @db:5432 هست
-  if grep -q '@db:5432/' .env 2>/dev/null; then
-    sed -i.bak 's#@db:5432/#@127.0.0.1:5433/#' .env || \
-      sed -i '' 's#@db:5432/#@127.0.0.1:5433/#' .env
-    echo -e "${yellow}Switched DATABASE_URL to 127.0.0.1:5433 for host network${plain}"
+  if grep -q '^COMPOSE_FILE=' .env; then
+    sed -i.bak 's|^COMPOSE_FILE=.*|COMPOSE_FILE=docker-compose.node.remote.yml|' .env || \
+      sed -i '' 's|^COMPOSE_FILE=.*|COMPOSE_FILE=docker-compose.node.remote.yml|' .env
+  else
+    echo "COMPOSE_FILE=docker-compose.node.remote.yml" >> .env
   fi
-  echo -e "${yellow}Using host network compose override${plain}"
+  if grep -q '@db:5432/' .env 2>/dev/null; then
+    PGPORT="$(grep '^POSTGRES_HOST_PORT=' .env | head -1 | cut -d= -f2- || echo 5433)"
+    PGPORT="${PGPORT:-5433}"
+    sed -i.bak "s#@db:5432/#@127.0.0.1:${PGPORT}/#" .env || \
+      sed -i '' "s#@db:5432/#@127.0.0.1:${PGPORT}/#" .env
+    echo -e "${yellow}Switched DATABASE_URL to 127.0.0.1:${PGPORT} for host network${plain}"
+  fi
+  echo -e "${yellow}Using remote host-network compose${plain}"
+else
+  COMPOSE_FILE="docker-compose.node.yml"
+  if [[ ! -f "$COMPOSE_FILE" ]]; then
+    echo -e "${red}${COMPOSE_FILE} missing${plain}"
+    exit 1
+  fi
 fi
 
-echo -e "${yellow}Rebuilding Edge stack...${plain}"
-docker compose "${COMPOSE_FILES[@]}" --env-file .env up -d --build
+# استک قدیمی (مدل قبلی) رو ببند تا با remote تداخل نکنه
+for f in docker-compose.node.yml docker-compose.node.host.yml docker-compose.node.remote.yml; do
+  [[ -f "$f" ]] || continue
+  [[ "$f" == "$COMPOSE_FILE" ]] && continue
+  docker compose -f "$f" --env-file .env down --remove-orphans 2>/dev/null || true
+done
+
+echo -e "${yellow}Rebuilding Edge stack (${COMPOSE_FILE})...${plain}"
+docker compose -f "$COMPOSE_FILE" --env-file .env up -d --build --force-recreate
 
 echo -e "${yellow}Waiting for health...${plain}"
 OK=0
@@ -136,14 +160,42 @@ for i in $(seq 1 40); do
   sleep 2
 done
 
-echo ""
+AMQP_OK=0
 if [[ "$OK" -eq 1 ]]; then
+  echo -e "${yellow}Verifying AMQP...${plain}"
+  for i in $(seq 1 8); do
+    if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T app node -e '
+const amqp=require("amqplib");
+(async()=>{
+  try{
+    const c=await amqp.connect(process.env.RABBITMQ_URL,{timeout:10000});
+    const ch=await c.createChannel();
+    await ch.checkQueue(process.env.RABBITMQ_QUEUE);
+    console.log("amqp ok");
+    await c.close();
+  }catch(e){ console.error(e.message); process.exit(1); }
+})();
+' 2>/dev/null; then
+      AMQP_OK=1
+      break
+    fi
+    sleep 3
+  done
+fi
+
+echo ""
+if [[ "$OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
   VER="$(curl -fsS "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
-  echo -e "${green}Edge node updated successfully${plain}"
+  echo -e "${green}Edge node updated successfully (HTTP + AMQP ok)${plain}"
   [[ -n "$VER" ]] && echo -e "Version: ${green}${VER}${plain}"
+elif [[ "$OK" -eq 1 ]]; then
+  echo -e "${red}HTTP ok but AMQP failed — sync will not work${plain}"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=80 app"
+  exit 1
 else
   echo -e "${yellow}Stack rebuilt — health not ready yet. Check logs:${plain}"
-  echo "  docker compose -f ${INSTALL_DIR}/docker-compose.node.yml logs -f app"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
 fi
+echo -e "Compose: ${COMPOSE_FILE}"
 echo -e "Env backup: ${ENV_BAK}"
 echo -e "${green}Back on Master panel → click تایید اتصال${plain}"

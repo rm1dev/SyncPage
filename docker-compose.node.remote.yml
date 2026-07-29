@@ -1,8 +1,9 @@
 # =============================================================================
-# معادل docker-compose.node.remote.yml — فقط به‌تنهایی استفاده شود
-# هرگز با docker-compose.node.yml مرج نکن (سرویس‌ها دوبل می‌شن)
+# SyncPage Edge — نود ریموت (جدا از Master)
+# شبکهٔ host تا egress به RabbitMQ Master از Docker bridge timeout نخوره
 #
-#   docker compose -f docker-compose.node.host.yml --env-file .env up -d --build
+# Usage:
+#   docker compose -f docker-compose.node.remote.yml --env-file .env up -d --build
 # =============================================================================
 services:
   db:
@@ -13,6 +14,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-syncpage_edge}
     volumes:
       - pgdata_edge:/var/lib/postgresql/data
+    # فقط از localhost هاست در دسترس باشه (اپ با host network بهش وصل می‌شه)
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     healthcheck:
@@ -28,12 +30,14 @@ services:
 
   app:
     build: .
+    # کل stack شبکهٔ هاست — مسیر AMQP مثل nc از خود VPS عمل می‌کنه
     network_mode: host
     env_file: .env
     environment:
       NODE_ROLE: EDGE
       PORT: ${APP_PORT:-3000}
       EDGE_NODE_ID: ${EDGE_NODE_ID:-}
+      # مهم: با host network اسم سرویس db دیگه resolve نمی‌شه
       DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@127.0.0.1:${POSTGRES_HOST_PORT:-5433}/${POSTGRES_DB:-syncpage_edge}?schema=public
     volumes:
       - static_pages:/app/static_pages

@@ -9,7 +9,16 @@ ENV_FILE ?= .env
 # اگه کاربر به docker.sock دسترسی نداشت، با sudo می‌ریم جلو
 DOCKER ?= $(shell docker info >/dev/null 2>&1 && echo docker || echo "sudo docker")
 COMPOSE_MASTER := $(DOCKER) compose -f docker-compose.master.yml --env-file $(ENV_FILE)
-COMPOSE_NODE   := $(DOCKER) compose -f docker-compose.node.yml --env-file $(ENV_FILE)
+# ریموت: host network | هم‌محل: bridge — از EDGE_NETWORK_MODE/.env می‌خونه
+NODE_COMPOSE_FILE := $(shell \
+  if [ -f "$(ENV_FILE)" ] && grep -q '^EDGE_NETWORK_MODE=host' "$(ENV_FILE)" 2>/dev/null; then \
+    echo docker-compose.node.remote.yml; \
+  elif [ -f "$(ENV_FILE)" ] && grep -q '^COMPOSE_FILE=' "$(ENV_FILE)" 2>/dev/null; then \
+    grep '^COMPOSE_FILE=' "$(ENV_FILE)" | head -1 | cut -d= -f2-; \
+  else \
+    echo docker-compose.node.yml; \
+  fi)
+COMPOSE_NODE   := $(DOCKER) compose -f $(NODE_COMPOSE_FILE) --env-file $(ENV_FILE)
 COMPOSE_LOCAL  := $(DOCKER) compose
 
 .PHONY: help \
@@ -23,6 +32,7 @@ help: ## Show available targets
 	@echo ""
 	@echo "Master (production):  make master-up | master-down | master-down-v | master-logs | master-build"
 	@echo "Edge node:            make node-up   | node-down   | node-down-v   | node-logs   | node-build"
+	@echo "  (compose file: $(NODE_COMPOSE_FILE) — set EDGE_NETWORK_MODE=host for remote)"
 	@echo "Local (dev stack):    make local-up  | local-down  | local-down-v  | local-logs  | smoke"
 	@echo ""
 	@echo "ENV_FILE default: $(ENV_FILE)  (override: make master-up ENV_FILE=.env.prod)"
