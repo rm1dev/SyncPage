@@ -86,4 +86,10 @@ export class DeploymentController {
     const path = this.deployment.getPackagePath(slug);
     res.download(path, `${slug}.zip`);
   }
+
+  /** مانیفست همگام‌سازی برای Edge (جایگزین AMQP وقتی مسیر بسته است) */
+  @Get('api/internal/sync/manifest')
+  getSyncManifest() {
+    return this.deployment.getSyncManifest();
+  }
 }

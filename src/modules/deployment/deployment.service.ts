@@ -173,4 +173,34 @@ export class DeploymentService implements OnModuleInit {
     }
     return path;
   }
+
+  /** لیست لندینگ‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
+  async getSyncManifest() {
+    const masterUrl = (
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const publicBase = (
+      this.config.get<string>('publicBaseUrl') || ''
+    ).replace(/\/$/, '');
+    const packagePath = (slug: string) =>
+      `/api/internal/landings/${slug}/package`;
+
+    const rows = await this.prisma.landing.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return {
+      landings: rows.map((row) => ({
+        slug: row.slug,
+        version: row.version,
+        checksum: row.checksum,
+        idempotencyKey: `landing:${row.slug}:v${row.version}:${row.checksum}`,
+        downloadUrl: `${masterUrl}${packagePath(row.slug)}`,
+        ...(publicBase
+          ? { downloadUrlFallback: `${publicBase}${packagePath(row.slug)}` }
+          : {}),
+      })),
+    };
+  }
 }
