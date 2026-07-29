@@ -51,30 +51,24 @@ stop_existing_edge() {
   ) || true
 }
 
-# چک نرم AMQP — اتصال اضافه باز نمی‌کنیم (با Outbox رقابت نکنه و hang نشه)
-# فقط لاگ اپ رو برای چند ثانیه نگاه می‌کنیم
-verify_amqp_from_app() {
+# یک نگاه سریع به لاگ — منتظر AMQP نمی‌مونیم (روی ریموت اغلب ETIMEDOUT می‌مونه؛ HTTP pull جاش رو می‌گیره)
+peek_amqp_or_pull() {
   local compose_file="$1"
-  echo -e "${yellow}Checking AMQP status in app logs (no extra connection)...${plain}"
-  local i logs
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    logs="$(docker compose -f "$compose_file" --env-file .env logs --tail=80 app 2>/dev/null || true)"
-    if echo "$logs" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ'; then
-      echo -e "${green}AMQP connected (seen in app logs)${plain}"
-      return 0
-    fi
-    # اگه هنوز فقط Connecting هست و هنوز ETIMEDOUT نخورده، صبر کن
-    if echo "$logs" | grep -qE 'connect ETIMEDOUT|ACCESS_REFUSED|ENOTFOUND|ECONNREFUSED'; then
-      # یک ریترای دیگه شانس بده؛ بعضی مسیرها دیر وصل می‌شن
-      if [[ "$i" -ge 6 ]]; then
-        echo -e "${yellow}AMQP still failing in logs (will keep retrying in background)${plain}"
-        echo "$logs" | grep -E 'OutboxService|Microservices|Connecting microservices|ETIMEDOUT|ACCESS' | tail -5 || true
-        return 1
-      fi
-    fi
-    sleep 3
-  done
-  echo -e "${yellow}AMQP not confirmed yet — app keeps retrying in background${plain}"
+  local logs
+  logs="$(docker compose -f "$compose_file" --env-file .env logs --tail=60 app 2>/dev/null || true)"
+  if echo "$logs" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ'; then
+    echo -e "${green}AMQP connected${plain}"
+    return 0
+  fi
+  if echo "$logs" | grep -qE 'HTTP sync pull enabled'; then
+    echo -e "${green}HTTP sync pull enabled (AMQP optional)${plain}"
+    return 0
+  fi
+  if echo "$logs" | grep -qE 'connect ETIMEDOUT'; then
+    echo -e "${yellow}AMQP ETIMEDOUT — HTTP pull will sync landings${plain}"
+    return 1
+  fi
+  echo -e "${yellow}AMQP not confirmed yet (ok if HTTP pull is on)${plain}"
   return 1
 }
 
@@ -235,7 +229,7 @@ done
 
 AMQP_OK=0
 if [[ "$HEALTH_OK" -eq 1 ]]; then
-  if verify_amqp_from_app "$COMPOSE_FILE"; then
+  if peek_amqp_or_pull "$COMPOSE_FILE"; then
     AMQP_OK=1
   fi
 fi
@@ -254,12 +248,13 @@ if [[ "$EDGE_NETWORK_MODE" == "host" ]]; then
 fi
 
 echo ""
-if [[ "$HEALTH_OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
-  echo -e "${green}Edge node installed, healthy, and AMQP connected${plain}"
-elif [[ "$HEALTH_OK" -eq 1 ]]; then
+if [[ "$HEALTH_OK" -eq 1 ]]; then
   echo -e "${green}Edge node installed and healthy${plain}"
-  echo -e "${yellow}AMQP to Master not confirmed yet — app retries in background${plain}"
-  echo -e "${yellow}Check later: docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=50 app${plain}"
+  if [[ "$AMQP_OK" -eq 1 ]]; then
+    echo -e "${green}Sync channel ready (AMQP or HTTP pull)${plain}"
+  else
+    echo -e "${yellow}AMQP not up yet — HTTP pull handles landings if enabled${plain}"
+  fi
 else
   echo -e "${yellow}Edge node started — health not ready yet (check logs)${plain}"
   echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=80 app"

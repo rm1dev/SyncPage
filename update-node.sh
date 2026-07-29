@@ -162,27 +162,28 @@ done
 
 AMQP_OK=0
 if [[ "$OK" -eq 1 ]]; then
-  echo -e "${yellow}Checking AMQP status in app logs...${plain}"
-  for i in $(seq 1 10); do
-    LOGS="$(docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=80 app 2>/dev/null || true)"
-    if echo "$LOGS" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ'; then
-      AMQP_OK=1
-      echo -e "${green}AMQP connected (seen in app logs)${plain}"
-      break
+  # یک peek فوری — ۳۰ثانیه منتظر AMQP نمی‌مونیم
+  LOGS="$(docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=60 app 2>/dev/null || true)"
+  if echo "$LOGS" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ|HTTP sync pull enabled'; then
+    AMQP_OK=1
+    if echo "$LOGS" | grep -qE 'HTTP sync pull enabled'; then
+      echo -e "${green}HTTP sync pull enabled${plain}"
+    else
+      echo -e "${green}AMQP connected${plain}"
     fi
-    sleep 3
-  done
+  elif echo "$LOGS" | grep -qE 'connect ETIMEDOUT'; then
+    echo -e "${yellow}AMQP ETIMEDOUT — HTTP pull will sync landings${plain}"
+  fi
 fi
 
 echo ""
-if [[ "$OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
+if [[ "$OK" -eq 1 ]]; then
   VER="$(curl -fsS "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
-  echo -e "${green}Edge node updated successfully (HTTP + AMQP ok)${plain}"
+  echo -e "${green}Edge node updated successfully${plain}"
   [[ -n "$VER" ]] && echo -e "Version: ${green}${VER}${plain}"
-elif [[ "$OK" -eq 1 ]]; then
-  echo -e "${green}Edge node updated (HTTP ok)${plain}"
-  echo -e "${yellow}AMQP not confirmed yet — app retries in background${plain}"
-  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=50 app"
+  if [[ "$AMQP_OK" -ne 1 ]]; then
+    echo -e "${yellow}Note: AMQP may still be down; landings sync via HTTP pull${plain}"
+  fi
 else
   echo -e "${yellow}Stack rebuilt — health not ready yet. Check logs:${plain}"
   echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
