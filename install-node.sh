@@ -51,66 +51,30 @@ stop_existing_edge() {
   ) || true
 }
 
-# بعد از بالا اومدن، چک می‌کنیم واقعاً به RabbitMQ وصل می‌شیم
+# چک نرم AMQP — اتصال اضافه باز نمی‌کنیم (با Outbox رقابت نکنه و hang نشه)
+# فقط لاگ اپ رو برای چند ثانیه نگاه می‌کنیم
 verify_amqp_from_app() {
   local compose_file="$1"
-  echo -e "${yellow}Verifying AMQP from app container...${plain}"
-  local i out rc
-  for i in 1 2 3 4 5 6 7 8; do
-    # checkQueue اگه صف هنوز ساخته نشده باشه خطا می‌ده؛ assertQueue امن‌تره
-    set +e
-    out="$(docker compose -f "$compose_file" --env-file .env exec -T app node -e '
-const amqp=require("amqplib");
-(async()=>{
-  const url=process.env.RABBITMQ_URL||"";
-  const q=process.env.RABBITMQ_QUEUE||"";
-  if(!url||!q){ console.error("missing RABBITMQ_URL/QUEUE"); process.exit(2); }
-  let host="?", port=5672;
-  try {
-    const u=new URL(url);
-    host=u.hostname; port=Number(u.port||5672);
-  } catch {}
-  // فقط یک اتصال AMQP — tcp جداگانه قبلش نزن (روی بعضی VPS اتصال دوم ETIMEDOUT می‌شه)
-  console.log("try amqp "+host+":"+port+" queue="+q);
-  try{
-    const c=await amqp.connect(url);
-    const ch=await c.createChannel();
-    const info=await ch.assertQueue(q,{durable:true});
-    console.log("amqp ok queue="+info.queue+" messages="+info.messageCount);
-    await c.close();
-    process.exit(0);
-  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
-})();
-' 2>&1)"
-    rc=$?
-    set -e
-    echo "$out"
-    if [[ "$rc" -eq 0 ]]; then
+  echo -e "${yellow}Checking AMQP status in app logs (no extra connection)...${plain}"
+  local i logs
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    logs="$(docker compose -f "$compose_file" --env-file .env logs --tail=80 app 2>/dev/null || true)"
+    if echo "$logs" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ'; then
+      echo -e "${green}AMQP connected (seen in app logs)${plain}"
       return 0
     fi
-    # اگه exec به کانتینر در حال اجرا نشد، با docker run --network host تست کن
-    if [[ "$out" == *"not running"* ]] || [[ "$out" == *"is not running"* ]] || [[ "$rc" -ne 0 && "$i" -eq 1 ]]; then
-      set +e
-      out="$(docker run --rm --network host --env-file .env "$(basename "$(pwd)")-app" node -e '
-const amqp=require("amqplib");
-(async()=>{
-  try{
-    const c=await amqp.connect(process.env.RABBITMQ_URL);
-    const ch=await c.createChannel();
-    await ch.assertQueue(process.env.RABBITMQ_QUEUE,{durable:true});
-    console.log("amqp ok (docker run)");
-    await c.close();
-  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
-})();
-' 2>&1)"
-      rc=$?
-      set -e
-      echo "$out"
-      [[ "$rc" -eq 0 ]] && return 0
+    # اگه هنوز فقط Connecting هست و هنوز ETIMEDOUT نخورده، صبر کن
+    if echo "$logs" | grep -qE 'connect ETIMEDOUT|ACCESS_REFUSED|ENOTFOUND|ECONNREFUSED'; then
+      # یک ریترای دیگه شانس بده؛ بعضی مسیرها دیر وصل می‌شن
+      if [[ "$i" -ge 6 ]]; then
+        echo -e "${yellow}AMQP still failing in logs (will keep retrying in background)${plain}"
+        echo "$logs" | grep -E 'OutboxService|Microservices|Connecting microservices|ETIMEDOUT|ACCESS' | tail -5 || true
+        return 1
+      fi
     fi
-    echo -e "${yellow}AMQP attempt ${i}/8 failed — retry...${plain}"
     sleep 3
   done
+  echo -e "${yellow}AMQP not confirmed yet — app keeps retrying in background${plain}"
   return 1
 }
 
@@ -293,13 +257,12 @@ echo ""
 if [[ "$HEALTH_OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
   echo -e "${green}Edge node installed, healthy, and AMQP connected${plain}"
 elif [[ "$HEALTH_OK" -eq 1 ]]; then
-  echo -e "${red}Edge HTTP is up but AMQP to Master failed${plain}"
-  echo -e "${yellow}Check: RABBITMQ_URL, Master :5672 firewall, and compose file${plain}"
-  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs --tail=80 app"
-  exit 1
+  echo -e "${green}Edge node installed and healthy${plain}"
+  echo -e "${yellow}AMQP to Master not confirmed yet — app retries in background${plain}"
+  echo -e "${yellow}Check later: docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=50 app${plain}"
 else
   echo -e "${yellow}Edge node started — health not ready yet (check logs)${plain}"
-  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs --tail=80 app"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=80 app"
 fi
 echo -e "Title:  ${TITLE}"
 echo -e "NodeId: ${NODE_ID}"
@@ -311,3 +274,5 @@ echo -e "Health: curl -fsS http://127.0.0.1:${PORT}/api/health"
 echo -e "Logs:   docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
 echo ""
 echo -e "${green}Back on Master panel → click Verify for this node${plain}"
+# نصب با HTTP سالم موفق حساب می‌شه؛ AMQP سخت‌گیرانه exit نمی‌کنه
+exit 0

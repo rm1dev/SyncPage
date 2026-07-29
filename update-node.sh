@@ -162,26 +162,12 @@ done
 
 AMQP_OK=0
 if [[ "$OK" -eq 1 ]]; then
-  echo -e "${yellow}Verifying AMQP...${plain}"
-  for i in $(seq 1 8); do
-    set +e
-    AMQP_OUT="$(docker compose -f "$COMPOSE_FILE" --env-file .env exec -T app node -e '
-const amqp=require("amqplib");
-(async()=>{
-  try{
-    const c=await amqp.connect(process.env.RABBITMQ_URL,{timeout:10000});
-    const ch=await c.createChannel();
-    await ch.assertQueue(process.env.RABBITMQ_QUEUE,{durable:true});
-    console.log("amqp ok");
-    await c.close();
-  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
-})();
-' 2>&1)"
-    AMQP_RC=$?
-    set -e
-    echo "$AMQP_OUT"
-    if [[ "$AMQP_RC" -eq 0 ]]; then
+  echo -e "${yellow}Checking AMQP status in app logs...${plain}"
+  for i in $(seq 1 10); do
+    LOGS="$(docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=80 app 2>/dev/null || true)"
+    if echo "$LOGS" | grep -qE 'Microservices listening|Outbox connected to RabbitMQ'; then
       AMQP_OK=1
+      echo -e "${green}AMQP connected (seen in app logs)${plain}"
       break
     fi
     sleep 3
@@ -194,9 +180,9 @@ if [[ "$OK" -eq 1 && "$AMQP_OK" -eq 1 ]]; then
   echo -e "${green}Edge node updated successfully (HTTP + AMQP ok)${plain}"
   [[ -n "$VER" ]] && echo -e "Version: ${green}${VER}${plain}"
 elif [[ "$OK" -eq 1 ]]; then
-  echo -e "${red}HTTP ok but AMQP failed — sync will not work${plain}"
-  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=80 app"
-  exit 1
+  echo -e "${green}Edge node updated (HTTP ok)${plain}"
+  echo -e "${yellow}AMQP not confirmed yet — app retries in background${plain}"
+  echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs --tail=50 app"
 else
   echo -e "${yellow}Stack rebuilt — health not ready yet. Check logs:${plain}"
   echo "  docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
@@ -204,3 +190,4 @@ fi
 echo -e "Compose: ${COMPOSE_FILE}"
 echo -e "Env backup: ${ENV_BAK}"
 echo -e "${green}Back on Master panel → click تایید اتصال${plain}"
+exit 0
