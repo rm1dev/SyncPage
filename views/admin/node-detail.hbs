@@ -1,7 +1,7 @@
 <header class="page-header">
   <div class="page-header-title">
     <h1>{{node.title}}</h1>
-    <span class="subtitle">نصب، تایید اتصال و تنظیمات نود Edge</span>
+    <span class="subtitle">نصب، تایید اتصال HTTP و صف Rabbit، تنظیمات نود Edge</span>
   </div>
   <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
     <form method="post" action="/spadmin/nodes/{{node.id}}/verify">
@@ -45,8 +45,14 @@
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-info">
-      <span class="stat-label">وضعیت</span>
+      <span class="stat-label">وضعیت HTTP</span>
       <span class="stat-value" style="font-size:1.1rem;"><span class="status-pill status-{{node.statusClass}}">{{node.statusLabel}}</span></span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label">صف / Rabbit</span>
+      <span class="stat-value" style="font-size:1.1rem;"><span class="status-pill status-{{node.rabbitStatusClass}}">{{node.rabbitStatusLabel}}</span></span>
     </div>
   </div>
   <div class="stat-card">
@@ -69,7 +75,26 @@
       <span class="stat-value" style="font-size:1rem;">{{node.lastSeenLabel}}</span>
     </div>
   </div>
+  <div class="stat-card">
+    <div class="stat-info">
+      <span class="stat-label">نام صف</span>
+      <span class="stat-value" style="font-size:0.9rem;"><code>{{node.queueName}}</code></span>
+    </div>
+  </div>
 </div>
+
+{{#if node.rabbitLastError}}
+  <div class="alert alert-error" style="margin-top:1rem;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>خطای صف Rabbit: {{node.rabbitLastError}}</span>
+  </div>
+{{/if}}
+{{#if node.lastError}}
+  <div class="alert alert-error" style="margin-top:0.75rem;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>آخرین خطای تایید: {{node.lastError}}</span>
+  </div>
+{{/if}}
 
 <!-- کامند نصب silent -->
 <div class="content-wrapper">

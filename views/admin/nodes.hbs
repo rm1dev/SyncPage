@@ -6,7 +6,7 @@
       </button>
       <h1>مدیریت نودها</h1>
     </div>
-    <span class="subtitle">ثبت، نصب و تایید سرورهای Edge متصل به Master</span>
+    <span class="subtitle">ثبت، نصب و تایید سرورهای Edge — HTTP و صف Rabbit</span>
   </div>
   <a href="/spadmin/nodes/new" class="btn btn-primary">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -68,6 +68,7 @@
           <th>پورت</th>
           <th>نسخه</th>
           <th>وضعیت</th>
+          <th>صف / Rabbit</th>
           <th>آخرین بازدید</th>
           <th class="actions">عملیات</th>
         </tr>
@@ -89,6 +90,12 @@
             {{/if}}
           </td>
           <td><span class="status-pill status-{{statusClass}}">{{statusLabel}}</span></td>
+          <td>
+            <span class="status-pill status-{{rabbitStatusClass}}">{{rabbitStatusLabel}}</span>
+            {{#if rabbitLastError}}
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.25rem; max-width:14rem;">{{rabbitLastError}}</div>
+            {{/if}}
+          </td>
           <td>{{lastSeenLabel}}</td>
           <td class="actions">
             <a href="/spadmin/nodes/{{id}}" class="btn-subtle"><span>جزئیات / نصب</span></a>
@@ -96,7 +103,7 @@
         </tr>
         {{else}}
         <tr>
-          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">
             هنوز نودی ثبت نشده. با «افزودن نود» شروع کنید.
           </td>
         </tr>

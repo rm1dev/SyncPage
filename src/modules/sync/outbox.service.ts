@@ -21,6 +21,12 @@ type OutboxPayload =
   | FormSyncPayload
   | FormSubmissionSyncPayload;
 
+export type RabbitHealthStatus = {
+  ok: boolean;
+  queue: string;
+  error?: string;
+};
+
 @Injectable()
 export class OutboxService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxService.name);
@@ -28,6 +34,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   private channel: Channel | null = null;
   private timer: NodeJS.Timeout | null = null;
   private publishing = false;
+  private connecting = false;
+  private destroyed = false;
+  private lastConnectError: string | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,6 +60,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    this.destroyed = true;
     if (this.timer) clearInterval(this.timer);
     try {
       await this.channel?.close();
@@ -60,11 +70,37 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async connectWithRetry(attempt = 1): Promise<void> {
+  /** وضعیت اتصال Outbox به RabbitMQ — برای /api/health و تایید نود */
+  async getRabbitStatus(): Promise<RabbitHealthStatus> {
+    const queue = this.edgeQueue();
+    if (!this.channel || !this.connection) {
+      return {
+        ok: false,
+        queue,
+        error: this.lastConnectError || 'RabbitMQ not connected',
+      };
+    }
     try {
-      await this.connect();
+      await this.channel.checkQueue(queue);
+      return { ok: true, queue };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      this.lastConnectError = message;
+      return { ok: false, queue, error: message };
+    }
+  }
+
+  private async connectWithRetry(attempt = 1): Promise<void> {
+    if (this.destroyed || this.connecting) return;
+    this.connecting = true;
+    try {
+      await this.connect();
+      this.connecting = false;
+    } catch (err) {
+      this.connecting = false;
+      if (this.destroyed) return;
+      const message = err instanceof Error ? err.message : String(err);
+      this.lastConnectError = message;
       const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
       this.logger.error(
         `RabbitMQ connect failed (attempt ${attempt}): ${message}. Retry in ${delay}ms`,
@@ -84,23 +120,42 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private clearConnection(reason: string) {
+    this.channel = null;
+    this.connection = null;
+    this.lastConnectError = reason;
+  }
+
   private async connect() {
     const url = this.config.get<string>('rabbitmqUrl')!;
     // بدون timeout کوتاه — روی مسیرهای بین‌الملل 15s باعث ETIMEDOUT الکی می‌شد
-    this.connection = await amqp.connect(url);
-    this.channel = await this.connection.createChannel();
+    const connection = await amqp.connect(url);
+    const channel = await connection.createChannel();
+
+    connection.on('error', (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.lastConnectError = message;
+      this.logger.error(`RabbitMQ connection error: ${message}`);
+    });
+    connection.on('close', () => {
+      this.clearConnection(
+        this.lastConnectError || 'RabbitMQ connection closed',
+      );
+      this.logger.warn('RabbitMQ connection closed — will retry');
+      if (!this.destroyed) void this.connectWithRetry();
+    });
 
     const edgeQueue = this.edgeQueue();
     const masterQueue = this.masterQueue();
 
-    await this.channel.assertQueue(edgeQueue, { durable: true });
-    await this.channel.assertQueue(masterQueue, { durable: true });
-    await this.channel.assertExchange('landing.exchange', 'topic', {
+    await channel.assertQueue(edgeQueue, { durable: true });
+    await channel.assertQueue(masterQueue, { durable: true });
+    await channel.assertExchange('landing.exchange', 'topic', {
       durable: true,
     });
-    await this.channel.bindQueue(edgeQueue, 'landing.exchange', 'landing.sync');
-    await this.channel.bindQueue(edgeQueue, 'landing.exchange', 'form.sync');
-    await this.channel.bindQueue(
+    await channel.bindQueue(edgeQueue, 'landing.exchange', 'landing.sync');
+    await channel.bindQueue(edgeQueue, 'landing.exchange', 'form.sync');
+    await channel.bindQueue(
       masterQueue,
       'landing.exchange',
       'form.submission.sync',
@@ -109,10 +164,14 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     // صف‌های per-node رو هم assert می‌کنیم
     const nodeQueues = await this.listNodeQueues();
     for (const q of nodeQueues) {
-      await this.channel.assertQueue(q, { durable: true });
-      await this.channel.bindQueue(q, 'landing.exchange', 'landing.sync');
-      await this.channel.bindQueue(q, 'landing.exchange', 'form.sync');
+      await channel.assertQueue(q, { durable: true });
+      await channel.bindQueue(q, 'landing.exchange', 'landing.sync');
+      await channel.bindQueue(q, 'landing.exchange', 'form.sync');
     }
+
+    this.connection = connection;
+    this.channel = channel;
+    this.lastConnectError = null;
 
     this.logger.log(
       `Outbox connected to RabbitMQ (node queues: ${nodeQueues.length})`,

@@ -80,18 +80,20 @@ enum EdgeNodeStatus {
 
 // نودهای Edge که از پنل مدیریت ثبت می‌شن
 model EdgeNode {
-  id           String         @id @default(uuid())
-  title        String
-  host         String
-  port         Int            @default(3000)
-  queueName    String         @unique
-  installToken String         @unique
-  status       EdgeNodeStatus @default(PENDING)
-  lastSeenAt   DateTime?
-  lastError    String?
-  notes        String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id              String         @id @default(uuid())
+  title           String
+  host            String
+  port            Int            @default(3000)
+  queueName       String         @unique
+  installToken    String         @unique
+  status          EdgeNodeStatus @default(PENDING)
+  lastSeenAt      DateTime?
+  lastError       String?
+  rabbitStatus    EdgeNodeStatus @default(PENDING)
+  rabbitLastError String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([status])
 }

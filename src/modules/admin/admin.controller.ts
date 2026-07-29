@@ -322,6 +322,8 @@ export class AdminController {
             : '—',
           statusLabel: statusFa(n.status),
           statusClass: statusClass(n.status),
+          rabbitStatusLabel: statusFa(n.rabbitStatus),
+          rabbitStatusClass: statusClass(n.rabbitStatus),
           localVersion: v?.localVersion || null,
           versionOutdated: v?.outdated || false,
           versionUnreachable: v?.unreachable || false,
@@ -401,10 +403,15 @@ export class AdminController {
           : '—',
         statusLabel: statusFa(node.status),
         statusClass: statusClass(node.status),
+        rabbitStatusLabel: statusFa(node.rabbitStatus),
+        rabbitStatusClass: statusClass(node.rabbitStatus),
         localVersion,
         latestVersion: latest,
         versionOutdated,
         versionUnreachable: !probed?.ok,
+        rabbitLiveOk: probed?.rabbitmq?.ok ?? null,
+        rabbitLiveError: probed?.rabbitmq?.error || null,
+        rabbitLiveQueue: probed?.rabbitmq?.queue || node.queueName,
       },
     };
   }
@@ -440,7 +447,7 @@ export class AdminController {
     try {
       await this.nodes.verify(id);
       return res.redirect(
-        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود آنلاین و تایید شد')}`,
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود تایید شد — HTTP و صف Rabbit هر دو اوکی هستند')}`,
       );
     } catch (err: unknown) {
       let text = 'تایید ناموفق';

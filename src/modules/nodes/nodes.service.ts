@@ -203,7 +203,7 @@ export class NodesService {
   }
 
   /**
-   * فقط health رو می‌خونه (بدون عوض کردن وضعیت) — برای چک نسخه
+   * فقط health رو می‌خونه (بدون عوض کردن وضعیت) — برای چک نسخه و Rabbit
    */
   async probeHealth(id: string): Promise<{
     ok: boolean;
@@ -211,6 +211,11 @@ export class NodesService {
     role?: string;
     nodeId?: string;
     url?: string;
+    rabbitmq?: {
+      ok: boolean;
+      queue?: string;
+      error?: string;
+    };
   } | null> {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
     if (!node) return null;
@@ -222,12 +227,20 @@ export class NodesService {
           validateStatus: () => true,
         });
         if (status === 200 && data?.ok) {
+          const rmq = data.rabbitmq;
           return {
             ok: true,
             version: data.version ? String(data.version) : undefined,
             role: data.role ? String(data.role) : undefined,
             nodeId: data.nodeId ? String(data.nodeId) : undefined,
             url,
+            rabbitmq: rmq
+              ? {
+                  ok: !!rmq.ok,
+                  queue: rmq.queue ? String(rmq.queue) : undefined,
+                  error: rmq.error ? String(rmq.error) : undefined,
+                }
+              : undefined,
           };
         }
       } catch {
@@ -238,7 +251,7 @@ export class NodesService {
   }
 
   /**
-   * از Master به health نود HTTP می‌زنیم و وضعیت رو آپدیت می‌کنیم
+   * از Master به health نود HTTP می‌زنیم + وضعیت Rabbit رو چک می‌کنیم
    */
   async verify(id: string): Promise<EdgeNodeWithInstall> {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
@@ -272,17 +285,88 @@ export class NodesService {
           continue;
         }
 
+        // چک اتصال نود به صف RabbitMQ
+        const rmq = data.rabbitmq as
+          | { ok?: boolean; queue?: string; error?: string }
+          | undefined;
+        if (!rmq || typeof rmq.ok !== 'boolean') {
+          const msg =
+            'وضعیت RabbitMQ در health گزارش نشده — نود را آپدیت کنید';
+          const updated = await this.prisma.edgeNode.update({
+            where: { id },
+            data: {
+              status: EdgeNodeStatus.ERROR,
+              lastSeenAt: new Date(),
+              lastError: msg,
+              rabbitStatus: EdgeNodeStatus.OFFLINE,
+              rabbitLastError: msg,
+            },
+          });
+          throw new BadRequestException({
+            message: `تایید ناموفق: ${msg}`,
+            node: this.withInstallMeta(updated),
+          });
+        }
+
+        if (rmq.queue && rmq.queue !== node.queueName) {
+          const msg = `نام صف مطابقت ندارد: انتظار ${node.queueName}، دریافت ${rmq.queue}`;
+          const updated = await this.prisma.edgeNode.update({
+            where: { id },
+            data: {
+              status: EdgeNodeStatus.ERROR,
+              lastSeenAt: new Date(),
+              lastError: msg,
+              rabbitStatus: EdgeNodeStatus.ERROR,
+              rabbitLastError: msg,
+            },
+          });
+          throw new BadRequestException({
+            message: `تایید ناموفق: ${msg}`,
+            node: this.withInstallMeta(updated),
+          });
+        }
+
+        if (!rmq.ok) {
+          const rabbitErr =
+            rmq.error || 'اتصال نود به RabbitMQ / صف برقرار نیست';
+          const updated = await this.prisma.edgeNode.update({
+            where: { id },
+            data: {
+              status: EdgeNodeStatus.ERROR,
+              lastSeenAt: new Date(),
+              lastError: `HTTP اوکی است ولی Rabbit قطع است: ${rabbitErr}`.slice(
+                0,
+                500,
+              ),
+              rabbitStatus: EdgeNodeStatus.OFFLINE,
+              rabbitLastError: String(rabbitErr).slice(0, 500),
+            },
+          });
+          this.logger.warn(
+            `Node HTTP ok but Rabbit down (${node.title}): ${rabbitErr}`,
+          );
+          throw new BadRequestException({
+            message: `تایید ناموفق: HTTP اوکی است ولی اتصال به صف Rabbit برقرار نیست — ${rabbitErr}`,
+            node: this.withInstallMeta(updated),
+          });
+        }
+
         const updated = await this.prisma.edgeNode.update({
           where: { id },
           data: {
             status: EdgeNodeStatus.ONLINE,
             lastSeenAt: new Date(),
             lastError: null,
+            rabbitStatus: EdgeNodeStatus.ONLINE,
+            rabbitLastError: null,
           },
         });
-        this.logger.log(`Node verified online: ${node.title} via ${url}`);
+        this.logger.log(
+          `Node verified online (HTTP+Rabbit): ${node.title} via ${url}`,
+        );
         return this.withInstallMeta(updated);
       } catch (err) {
+        if (err instanceof BadRequestException) throw err;
         errors.push(this.translateProbeError(err, url));
       }
     }
@@ -296,6 +380,8 @@ export class NodesService {
       data: {
         status: EdgeNodeStatus.OFFLINE,
         lastError: lastMessage.slice(0, 500),
+        rabbitStatus: EdgeNodeStatus.OFFLINE,
+        rabbitLastError: 'نود در دسترس نیست — وضعیت صف قابل بررسی نیست',
       },
     });
     this.logger.warn(`Node verify failed (${node.title}): ${lastMessage}`);
