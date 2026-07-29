@@ -86,7 +86,8 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
 
   private async connect() {
     const url = this.config.get<string>('rabbitmqUrl')!;
-    this.connection = await amqp.connect(url);
+    // timeout تا از داخل کانتینر اگه مسیر بسته بود، برای همیشه hang نکنیم
+    this.connection = await amqp.connect(url, { timeout: 15_000 });
     this.channel = await this.connection.createChannel();
 
     const edgeQueue = this.edgeQueue();

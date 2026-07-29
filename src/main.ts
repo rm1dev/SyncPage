@@ -75,6 +75,8 @@ async function bootstrap() {
         socketOptions: {
           heartbeatIntervalInSeconds: 30,
           reconnectTimeInSeconds: 5,
+          // اگه از داخل Docker به بروکر نرسه، بی‌نهایت hang نکنه
+          timeout: 15_000,
         },
       },
     });
@@ -95,6 +97,7 @@ async function bootstrap() {
         socketOptions: {
           heartbeatIntervalInSeconds: 30,
           reconnectTimeInSeconds: 5,
+          timeout: 15_000,
         },
       },
     });
