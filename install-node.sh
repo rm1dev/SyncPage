@@ -75,7 +75,9 @@ DB_USER="$(parse_json databaseUser)"
 DB_PASS="$(parse_json databasePassword)"
 
 # نصب هم‌محل با Master: AMQP و دانلود پکیج از gateway هاست
+COLOCATED=0
 if [[ "${SYNCPAGE_COLOCATED:-0}" == "1" ]]; then
+  COLOCATED=1
   RMQ_URL="$(echo "$RMQ_URL" | sed -E 's#@[^/:]+:#@host.docker.internal:#')"
   MASTER_URL="$(echo "$MASTER_URL" | sed -E 's#://[^/:]+#://host.docker.internal#')"
   echo -e "${yellow}Co-located mode: RabbitMQ/Master via host.docker.internal${plain}"
@@ -113,6 +115,23 @@ else
   git clone --branch "$GITHUB_BRANCH" --depth 1 "$REPO_URL" .
 fi
 
+# نود ریموت: host network تا به RabbitMQ Master از داخل Docker timeout نخوره
+EDGE_NETWORK_MODE="bridge"
+POSTGRES_HOST_PORT="5433"
+COMPOSE_FILES=(-f docker-compose.node.yml)
+if [[ "$COLOCATED" != "1" ]]; then
+  EDGE_NETWORK_MODE="host"
+  COMPOSE_FILES+=(-f docker-compose.node.host.yml)
+  echo -e "${yellow}Remote edge: using host network for AMQP egress${plain}"
+fi
+
+# bridge → hostname db:5432 | host network → 127.0.0.1:5433
+if [[ "$EDGE_NETWORK_MODE" == "host" ]]; then
+  DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:${POSTGRES_HOST_PORT}/${DB_NAME}?schema=public"
+else
+  DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}?schema=public"
+fi
+
 cat > .env <<EOF
 NODE_ROLE=EDGE
 PORT=${PORT}
@@ -122,7 +141,8 @@ EDGE_NODE_ID=${NODE_ID}
 POSTGRES_USER=${DB_USER}
 POSTGRES_PASSWORD=${DB_PASS}
 POSTGRES_DB=${DB_NAME}
-DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}?schema=public
+POSTGRES_HOST_PORT=${POSTGRES_HOST_PORT}
+DATABASE_URL=${DATABASE_URL}
 
 RABBITMQ_URL=${RMQ_URL}
 RABBITMQ_QUEUE=${QUEUE}
@@ -141,10 +161,13 @@ OUTBOX_MAX_ATTEMPTS=10
 
 APP_PORT=${PORT}
 HTTP_PORT=${PORT}
+EDGE_NETWORK_MODE=${EDGE_NETWORK_MODE}
+SYNCPAGE_GITHUB_REPO=${GITHUB_REPO}
+SYNCPAGE_GITHUB_BRANCH=${GITHUB_BRANCH}
 EOF
 
 echo -e "${yellow}Building and starting Edge node...${plain}"
-docker compose -f docker-compose.node.yml --env-file .env up -d --build
+docker compose "${COMPOSE_FILES[@]}" --env-file .env up -d --build
 
 # صبر کوتاه برای healthy شدن
 sleep 5

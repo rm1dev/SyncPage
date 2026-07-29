@@ -1,0 +1,21 @@
+# =============================================================================
+# Override برای Edge ریموت — شبکهٔ هاست (حل ETIMEDOUT از داخل bridge به AMQP)
+# Usage:
+#   docker compose -f docker-compose.node.yml -f docker-compose.node.host.yml --env-file .env up -d
+# =============================================================================
+services:
+  db:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+
+  app:
+    network_mode: host
+    environment:
+      NODE_ROLE: EDGE
+      PORT: ${APP_PORT:-3000}
+      EDGE_NODE_ID: ${EDGE_NODE_ID:-}
+      # با host network باید از localhost به پورت publish شدهٔ db وصل بشیم
+      DATABASE_URL: postgresql://${POSTGRES_USER:-syncpage}:${POSTGRES_PASSWORD:-syncpage}@127.0.0.1:${POSTGRES_HOST_PORT:-5433}/${POSTGRES_DB:-syncpage_edge}?schema=public
+    # با network_mode:host دیگه ports/extra_hosts معنی نداره
+    ports: []
+    extra_hosts: []

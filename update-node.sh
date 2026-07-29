@@ -97,8 +97,34 @@ PORT="$(grep '^HTTP_PORT=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 PORT="${PORT:-$(grep '^APP_PORT=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)}"
 PORT="${PORT:-3000}"
 
+# اگه از قبل host mode ست شده، یا نود ریموت هست (host.docker.internal توی URL نیست)
+EDGE_NETWORK_MODE="$(grep '^EDGE_NETWORK_MODE=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+RMQ_URL_NOW="$(grep '^RABBITMQ_URL=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+COMPOSE_FILES=(-f docker-compose.node.yml)
+if [[ "$EDGE_NETWORK_MODE" == "host" ]] || [[ "$RMQ_URL_NOW" != *"host.docker.internal"* ]]; then
+  if [[ ! -f docker-compose.node.host.yml ]]; then
+    echo -e "${red}docker-compose.node.host.yml missing — pull latest repo${plain}"
+    exit 1
+  fi
+  COMPOSE_FILES+=(-f docker-compose.node.host.yml)
+  # .env رو برای host network تنظیم کن (بدون عوض کردن پسوردها)
+  if ! grep -q '^EDGE_NETWORK_MODE=host' .env 2>/dev/null; then
+    echo "EDGE_NETWORK_MODE=host" >> .env
+  fi
+  if ! grep -q '^POSTGRES_HOST_PORT=' .env 2>/dev/null; then
+    echo "POSTGRES_HOST_PORT=5433" >> .env
+  fi
+  # DATABASE_URL رو به 127.0.0.1:5433 ببر اگه هنوز @db:5432 هست
+  if grep -q '@db:5432/' .env 2>/dev/null; then
+    sed -i.bak 's#@db:5432/#@127.0.0.1:5433/#' .env || \
+      sed -i '' 's#@db:5432/#@127.0.0.1:5433/#' .env
+    echo -e "${yellow}Switched DATABASE_URL to 127.0.0.1:5433 for host network${plain}"
+  fi
+  echo -e "${yellow}Using host network compose override${plain}"
+fi
+
 echo -e "${yellow}Rebuilding Edge stack...${plain}"
-docker compose -f docker-compose.node.yml --env-file .env up -d --build
+docker compose "${COMPOSE_FILES[@]}" --env-file .env up -d --build
 
 echo -e "${yellow}Waiting for health...${plain}"
 OK=0
