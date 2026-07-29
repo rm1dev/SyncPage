@@ -77,6 +77,8 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./nginx/nginx.master.conf:/etc/nginx/nginx.conf:ro
+      # لندینگ‌های Master روی /:slug/ از همین volume سرو می‌شن
+      - static_pages:/static_pages:ro
     ports:
       - "${HTTP_PORT:-1313}:80"
     depends_on:

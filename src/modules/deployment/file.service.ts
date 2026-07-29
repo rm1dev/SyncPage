@@ -77,7 +77,7 @@ export class FileService {
 
   /**
    * توی index.html یه <base href="..."> می‌ذاریم تا assetهای absolute مثل /css/x.css
-   * نرن سراغ روت دامنه (که nginx به /spadmin ریدایرکت می‌کنه)
+   * نسبت به مسیر لندینگ resolve بشن (نه روت دامنه)
    */
   ensureHtmlBaseHref(dir: string, baseHref: string) {
     const indexPath = join(dir, 'index.html');
