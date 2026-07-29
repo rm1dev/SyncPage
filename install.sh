@@ -155,7 +155,7 @@ MASTER_INTERNAL_URL="$REPLY"
 
 echo ""
 note "AMQP URL Edge nodes use for queues — must be Master IP, not the CDN domain."
-prompt "RabbitMQ URL for Edge nodes" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:5672"
+prompt "RabbitMQ URL for Edge nodes" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:45672"
 RABBITMQ_PUBLIC_URL="$REPLY"
 
 echo ""

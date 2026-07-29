@@ -31,8 +31,10 @@ services:
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - rmqdata:/var/lib/rabbitmq
     ports:
-      # Edgeها باید به 5672 برسن
+      # Edgeها باید به AMQP برسن — بعضی مسیرهای بین‌الملل 5672 را خراب می‌کنند
       - "5672:5672"
+      # پورت جایگزین عمومی (همان بروکر) — در RABBITMQ_PUBLIC_URL بگذار مثلاً :45672
+      - "${RABBITMQ_PUBLIC_PORT:-45672}:5672"
       - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
