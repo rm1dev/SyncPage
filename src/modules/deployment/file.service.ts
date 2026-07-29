@@ -7,6 +7,8 @@ import {
   rmSync,
   writeFileSync,
   cpSync,
+  readdirSync,
+  statSync,
 } from 'fs';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
@@ -42,6 +44,53 @@ export class FileService {
     mkdirSync(targetDir, { recursive: true });
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(targetDir, true);
+    this.normalizeExtractedLanding(targetDir);
+  }
+
+  /**
+   * اگه ZIP یه پوشهٔ ریشه اضافه داره (مثل site/index.html)، محتوا رو میاریم بالا
+   * تا پیش‌نمایش و سرو استاتیک index.html رو مستقیم ببینن
+   */
+  normalizeExtractedLanding(dir: string) {
+    if (existsSync(join(dir, 'index.html'))) return;
+
+    const entries = readdirSync(dir).filter(
+      (e) => e !== '__MACOSX' && e !== '.DS_Store',
+    );
+    if (entries.length !== 1) return;
+
+    const only = join(dir, entries[0]);
+    if (!statSync(only).isDirectory()) return;
+    if (!existsSync(join(only, 'index.html'))) return;
+
+    const tmp = `${dir}.__flatten__`;
+    if (existsSync(tmp)) rmSync(tmp, { recursive: true, force: true });
+    renameSync(only, tmp);
+    for (const left of readdirSync(dir)) {
+      rmSync(join(dir, left), { recursive: true, force: true });
+    }
+    for (const child of readdirSync(tmp)) {
+      renameSync(join(tmp, child), join(dir, child));
+    }
+    rmSync(tmp, { recursive: true, force: true });
+  }
+
+  /**
+   * توی index.html یه <base href="..."> می‌ذاریم تا assetهای absolute مثل /css/x.css
+   * نرن سراغ روت دامنه (که nginx به /spadmin ریدایرکت می‌کنه)
+   */
+  ensureHtmlBaseHref(dir: string, baseHref: string) {
+    const indexPath = join(dir, 'index.html');
+    if (!existsSync(indexPath)) return;
+    let html = readFileSync(indexPath, 'utf8');
+    if (/<base\s/i.test(html)) return;
+    const base = baseHref.endsWith('/') ? baseHref : `${baseHref}/`;
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}">`);
+    } else {
+      html = `<base href="${base}">` + html;
+    }
+    writeFileSync(indexPath, html);
   }
 
   checksumFile(filePath: string): string {

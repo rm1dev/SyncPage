@@ -39,6 +39,16 @@ export class DeploymentService implements OnModuleInit {
     const previewId = randomUUID();
     const previewDir = join(this.files.tempRoot, 'preview', previewId);
     this.files.extractZip(zipPath, previewDir);
+
+    if (!existsSync(join(previewDir, 'index.html'))) {
+      throw new BadRequestException(
+        'داخل ZIP باید index.html باشد (در ریشه یا داخل یک پوشه)',
+      );
+    }
+
+    // برای پیش‌نمایش داخل iframe — مسیر نسبی assetها درست resolve بشه
+    this.files.ensureHtmlBaseHref(previewDir, `/preview/${previewId}/`);
+
     const checksum = this.files.checksumFile(zipPath);
 
     // ZIP اصلی رو نگه می‌داریم برای confirm و sync
@@ -46,11 +56,16 @@ export class DeploymentService implements OnModuleInit {
     const { copyFileSync } = await import('fs');
     copyFileSync(zipPath, storedZip);
 
+    const publicBase = (
+      this.config.get<string>('publicBaseUrl') || ''
+    ).replace(/\/$/, '');
+    const previewPath = `/preview/${previewId}/`;
+
     return {
       previewId,
       slug,
       checksum,
-      previewUrl: `/preview/${previewId}/`,
+      previewUrl: publicBase ? `${publicBase}${previewPath}` : previewPath,
       storedZip,
     };
   }
@@ -60,11 +75,26 @@ export class DeploymentService implements OnModuleInit {
     const storedZip = join(this.files.tempRoot, 'packages', `${previewId}.zip`);
 
     if (!existsSync(previewDir) || !existsSync(storedZip)) {
-      throw new NotFoundException('Preview not found or expired');
+      throw new NotFoundException('پیش‌نمایش پیدا نشد یا منقضی شده');
     }
 
     const checksum = this.files.checksumFile(storedZip);
-    this.files.replaceLandingAtomic(slug, previewDir);
+
+    // از ZIP تمیز استخراج می‌کنیم (نه از preview که <base href> برای iframe داره)
+    const confirmDir = join(
+      this.files.tempRoot,
+      'preview',
+      `confirm-${previewId}`,
+    );
+    this.files.extractZip(storedZip, confirmDir);
+    if (!existsSync(join(confirmDir, 'index.html'))) {
+      throw new BadRequestException(
+        'داخل ZIP باید index.html باشد (در ریشه یا داخل یک پوشه)',
+      );
+    }
+
+    this.files.replaceLandingAtomic(slug, confirmDir);
+    this.files.cleanPreview(`confirm-${previewId}`);
 
     const existing = await this.prisma.landing.findUnique({ where: { slug } });
     const version = existing ? existing.version + 1 : 1;
@@ -76,8 +106,13 @@ export class DeploymentService implements OnModuleInit {
     const finalZip = join(this.files.tempRoot, 'packages', `${slug}.zip`);
     copyFileSync(storedZip, finalZip);
 
-    const masterUrl =
-      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = (
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const publicBase = (
+      this.config.get<string>('publicBaseUrl') || ''
+    ).replace(/\/$/, '');
+    const packagePath = `/api/internal/landings/${slug}/package`;
     const idempotencyKey = `landing:${slug}:v${version}:${checksum}`;
 
     const landing = await this.prisma.$transaction(async (tx) => {
@@ -106,7 +141,11 @@ export class DeploymentService implements OnModuleInit {
             slug,
             version,
             checksum,
-            downloadUrl: `${masterUrl}/api/internal/landings/${slug}/package`,
+            // Edge اول از IP داخلی Master دانلود می‌کنه؛ اگه نشد public رو هم امتحان می‌کنه
+            downloadUrl: `${masterUrl}${packagePath}`,
+            ...(publicBase
+              ? { downloadUrlFallback: `${publicBase}${packagePath}` }
+              : {}),
           } as Prisma.InputJsonValue,
         },
       });

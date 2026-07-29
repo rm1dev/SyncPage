@@ -109,13 +109,19 @@ async function bootstrap() {
   );
 
   if (started.length) {
-    console.log(`Connecting microservices: ${started.join(', ')} → ${rmqUrl.replace(/:[^:@/]+@/, ':***@')}`);
-    try {
-      await app.startAllMicroservices();
-      console.log(`Microservices listening: ${started.join(', ')}`);
-    } catch (err) {
-      console.error('Microservices failed to start (HTTP stays up):', err);
-    }
+    console.log(
+      `Connecting microservices: ${started.join(', ')} → ${rmqUrl.replace(/:[^:@/]+@/, ':***@')}`,
+    );
+    // await نمی‌کنیم تا اگه RabbitMQ دیر جواب داد، پروسس روی HTTP زنده بمونه
+    // و به‌محض وصل شدن، consumer همگام‌سازی شروع به کار کنه
+    void app
+      .startAllMicroservices()
+      .then(() =>
+        console.log(`Microservices listening: ${started.join(', ')}`),
+      )
+      .catch((err) =>
+        console.error('Microservices failed to start (HTTP stays up):', err),
+      );
   }
 }
 

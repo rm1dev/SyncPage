@@ -236,7 +236,7 @@ export class SyncConsumerController {
       `edge-${payload.slug}-${payload.version}`,
     );
 
-    await this.downloadFile(payload.downloadUrl, zipPath);
+    await this.downloadWithFallback(payload, zipPath);
 
     const checksum = this.files.checksumFile(zipPath);
     if (checksum !== payload.checksum) {
@@ -265,6 +265,46 @@ export class SyncConsumerController {
     });
   }
 
+  private async downloadWithFallback(
+    payload: LandingSyncPayload,
+    dest: string,
+  ) {
+    const candidates = [payload.downloadUrl];
+    if (
+      payload.downloadUrlFallback &&
+      payload.downloadUrlFallback !== payload.downloadUrl
+    ) {
+      candidates.push(payload.downloadUrlFallback);
+    }
+    // از env لبه هم به‌عنوان آخرین شانس
+    const publicBase = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+    if (publicBase) {
+      try {
+        const path = new URL(payload.downloadUrl).pathname;
+        const viaPublic = `${publicBase}${path}`;
+        if (!candidates.includes(viaPublic)) candidates.push(viaPublic);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    let lastErr: unknown;
+    for (const url of candidates) {
+      try {
+        this.logger.log(`Downloading landing package: ${url}`);
+        await this.downloadFile(url, dest);
+        return;
+      } catch (err) {
+        lastErr = err;
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Download failed (${url}): ${message}`);
+      }
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(`Failed to download package for ${payload.slug}`);
+  }
+
   private async downloadFile(url: string, dest: string) {
     const dir = join(dest, '..');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -272,6 +312,8 @@ export class SyncConsumerController {
     const response = await axios.get(url, {
       responseType: 'stream',
       timeout: 120_000,
+      maxRedirects: 5,
+      validateStatus: (s: number) => s >= 200 && s < 300,
     });
     await pipeline(response.data, createWriteStream(dest));
   }

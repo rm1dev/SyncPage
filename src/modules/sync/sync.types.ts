@@ -4,6 +4,8 @@ export interface LandingSyncPayload {
   version: number;
   checksum: string;
   downloadUrl: string;
+  /** اگه downloadUrl از IP داخلی Master نرسید */
+  downloadUrlFallback?: string;
   formSnapshot?: unknown;
 }
 
