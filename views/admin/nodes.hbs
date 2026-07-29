@@ -27,6 +27,33 @@
   </div>
 {{/if}}
 
+{{#if masterUpdate.outdated}}
+  <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
+    <div>
+      <strong>Master قدیمی است</strong>
+      ({{masterUpdate.localVersion}} ← {{masterUpdate.latestVersion}})
+    </div>
+    <div class="install-cmd-box">
+      <code id="master-update-nodes">{{masterUpdate.updateCommand}}</code>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#master-update-nodes">کپی</button>
+    </div>
+  </div>
+{{/if}}
+
+{{#if hasOutdatedNodes}}
+  <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
+    <div>
+      <strong>بعضی نودها نسخه قدیمی دارند</strong>
+      {{#if latestVersion}}— آخرین نسخه GitHub: <code>{{latestVersion}}</code>{{/if}}
+    </div>
+    <div class="install-cmd-box">
+      <code id="node-update-list">{{nodeUpdateCommand}}</code>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#node-update-list">کپی</button>
+    </div>
+    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">روی هر Edge قدیمی این کامند را با root اجرا کنید.</p>
+  </div>
+{{/if}}
+
 <div class="content-wrapper">
   <div class="section-header">
     <span>نودهای Edge</span>
@@ -39,6 +66,7 @@
           <th>عنوان</th>
           <th>آدرس</th>
           <th>پورت</th>
+          <th>نسخه</th>
           <th>وضعیت</th>
           <th>آخرین بازدید</th>
           <th class="actions">عملیات</th>
@@ -50,6 +78,16 @@
           <td style="font-weight: 600;">{{title}}</td>
           <td><code>{{host}}</code></td>
           <td><code>{{port}}</code></td>
+          <td>
+            {{#if localVersion}}
+              <code>v{{localVersion}}</code>
+              {{#if versionOutdated}}
+                <span class="status-pill status-warn" style="margin-right:0.35rem;">آپدیت</span>
+              {{/if}}
+            {{else}}
+              <span style="color:var(--text-muted);">{{#if versionUnreachable}}در دسترس نیست{{else}}—{{/if}}</span>
+            {{/if}}
+          </td>
           <td><span class="status-pill status-{{statusClass}}">{{statusLabel}}</span></td>
           <td>{{lastSeenLabel}}</td>
           <td class="actions">
@@ -58,7 +96,7 @@
         </tr>
         {{else}}
         <tr>
-          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
             هنوز نودی ثبت نشده. با «افزودن نود» شروع کنید.
           </td>
         </tr>

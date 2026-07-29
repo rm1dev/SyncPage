@@ -879,6 +879,11 @@ textarea.form-control {
   color: var(--color-warning);
 }
 
+.status-pill.status-warn {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
 /* Responsive Breakpoints */
 @media (max-width: 1024px) {
   .sidebar {

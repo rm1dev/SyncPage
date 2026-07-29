@@ -72,6 +72,10 @@ async function bootstrap() {
         queueOptions: { durable: true },
         noAck: false,
         prefetchCount: 1,
+        socketOptions: {
+          heartbeatIntervalInSeconds: 30,
+          reconnectTimeInSeconds: 5,
+        },
       },
     });
     started.push(`edge:${queue}`);
@@ -88,21 +92,31 @@ async function bootstrap() {
         queueOptions: { durable: true },
         noAck: false,
         prefetchCount: 1,
+        socketOptions: {
+          heartbeatIntervalInSeconds: 30,
+          reconnectTimeInSeconds: 5,
+        },
       },
     });
     started.push(`master:${queue}`);
   }
 
-  if (started.length) {
-    await app.startAllMicroservices();
-    console.log(`Microservices listening: ${started.join(', ')}`);
-  }
-
+  // اول HTTP رو بالا میاریم تا health گیر RabbitMQ نمونه
   const port = Number(process.env.PORT || 3000);
   await app.listen(port);
   console.log(
     `SyncPage running as ${process.env.NODE_ROLE || 'MASTER'} on port ${port}`,
   );
+
+  if (started.length) {
+    console.log(`Connecting microservices: ${started.join(', ')} → ${rmqUrl.replace(/:[^:@/]+@/, ':***@')}`);
+    try {
+      await app.startAllMicroservices();
+      console.log(`Microservices listening: ${started.join(', ')}`);
+    } catch (err) {
+      console.error('Microservices failed to start (HTTP stays up):', err);
+    }
+  }
 }
 
 bootstrap();

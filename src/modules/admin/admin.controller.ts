@@ -22,6 +22,8 @@ import { AdminTokenGuard } from '../../common/guards/admin-token.guard';
 import { FormEngineService } from '../form-engine/form-engine.service';
 import { DeploymentService } from '../deployment/deployment.service';
 import { NodesService } from '../nodes/nodes.service';
+import { VersionService } from '../updates/version.service';
+import { isOutdated } from '../../common/app-version';
 
 @Controller('spadmin')
 export class AdminController {
@@ -29,6 +31,7 @@ export class AdminController {
     private readonly forms: FormEngineService,
     private readonly deployment: DeploymentService,
     private readonly nodes: NodesService,
+    private readonly versions: VersionService,
   ) {}
 
   @Get('login')
@@ -72,11 +75,20 @@ export class AdminController {
     const forms = await this.forms.list();
     const landings = await this.deployment.listLandings();
     const nodes = await this.nodes.list();
+    const [masterUpdate, nodesVersion] = await Promise.all([
+      this.versions.getMasterStatus(),
+      this.versions.getNodesVersionStatus(),
+    ]);
+    const outdatedNodes = nodesVersion.nodes.filter((n) => n.outdated);
     return {
       layout: 'main',
       title: 'داشبورد',
       active: 'dashboard',
       flash,
+      appVersion: masterUpdate.localVersion,
+      masterUpdate,
+      outdatedNodes,
+      nodeUpdateCommand: nodesVersion.nodeUpdateCommand,
       forms: forms.map((f) => ({
         ...f,
         fieldCount: Array.isArray(f.body) ? f.body.length : 0,
@@ -282,21 +294,39 @@ export class AdminController {
     @Query('flash') flash?: string,
     @Query('error') error?: string,
   ) {
-    const nodes = await this.nodes.list();
+    const [nodes, masterUpdate, nodesVersion] = await Promise.all([
+      this.nodes.list(),
+      this.versions.getMasterStatus(),
+      this.versions.getNodesVersionStatus(),
+    ]);
+    const versionById = new Map(
+      nodesVersion.nodes.map((n) => [n.id, n] as const),
+    );
     return {
       layout: 'main',
       title: 'مدیریت نودها',
       active: 'nodes',
       flash,
       error,
-      nodes: nodes.map((n) => ({
-        ...n,
-        lastSeenLabel: n.lastSeenAt
-          ? new Date(n.lastSeenAt).toLocaleString('fa-IR')
-          : '—',
-        statusLabel: statusFa(n.status),
-        statusClass: statusClass(n.status),
-      })),
+      appVersion: masterUpdate.localVersion,
+      masterUpdate,
+      latestVersion: nodesVersion.latestVersion,
+      nodeUpdateCommand: nodesVersion.nodeUpdateCommand,
+      hasOutdatedNodes: nodesVersion.nodes.some((n) => n.outdated),
+      nodes: nodes.map((n) => {
+        const v = versionById.get(n.id);
+        return {
+          ...n,
+          lastSeenLabel: n.lastSeenAt
+            ? new Date(n.lastSeenAt).toLocaleString('fa-IR')
+            : '—',
+          statusLabel: statusFa(n.status),
+          statusClass: statusClass(n.status),
+          localVersion: v?.localVersion || null,
+          versionOutdated: v?.outdated || false,
+          versionUnreachable: v?.unreachable || false,
+        };
+      }),
     };
   }
 
@@ -349,12 +379,21 @@ export class AdminController {
     @Query('error') error?: string,
   ) {
     const node = await this.nodes.getById(id);
+    const [masterUpdate, probed] = await Promise.all([
+      this.versions.getMasterStatus(),
+      this.nodes.probeHealth(id),
+    ]);
+    const latest = masterUpdate.latestVersion;
+    const localVersion = probed?.version || null;
+    const versionOutdated =
+      !!latest && !!localVersion && isOutdated(localVersion, latest);
     return {
       layout: 'main',
       title: node.title,
       active: 'nodes',
       flash,
       error,
+      appVersion: masterUpdate.localVersion,
       node: {
         ...node,
         lastSeenLabel: node.lastSeenAt
@@ -362,6 +401,10 @@ export class AdminController {
           : '—',
         statusLabel: statusFa(node.status),
         statusClass: statusClass(node.status),
+        localVersion,
+        latestVersion: latest,
+        versionOutdated,
+        versionUnreachable: !probed?.ok,
       },
     };
   }
@@ -400,7 +443,7 @@ export class AdminController {
         `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود آنلاین و تایید شد')}`,
       );
     } catch (err: unknown) {
-      let text = 'Verify failed';
+      let text = 'تایید ناموفق';
       if (err instanceof HttpException) {
         const r = err.getResponse();
         if (typeof r === 'string') {

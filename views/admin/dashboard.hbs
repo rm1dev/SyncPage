@@ -21,6 +21,37 @@
   </div>
 {{/if}}
 
+{{#if masterUpdate.outdated}}
+  <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
+    <div>
+      <strong>آپدیت Master موجود است</strong>
+      — نسخه فعلی <code>{{masterUpdate.localVersion}}</code>،
+      آخرین نسخه GitHub <code>{{masterUpdate.latestVersion}}</code>
+    </div>
+    <div class="install-cmd-box">
+      <code id="master-update-cmd">{{masterUpdate.updateCommand}}</code>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#master-update-cmd">کپی</button>
+    </div>
+    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">این کامند را با root روی سرور Master اجرا کنید. فایل <code>.env</code> حفظ می‌شود.</p>
+  </div>
+{{/if}}
+
+{{#if outdatedNodes.length}}
+  <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
+    <div>
+      <strong>{{outdatedNodes.length}} نود Edge نسخه قدیمی دارند</strong>
+      {{#if outdatedNodes.[0]}}
+        (مثلاً «{{outdatedNodes.[0].title}}»)
+      {{/if}}
+    </div>
+    <div class="install-cmd-box">
+      <code id="node-update-cmd-dash">{{nodeUpdateCommand}}</code>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#node-update-cmd-dash">کپی</button>
+    </div>
+    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">این کامند را روی هر سرور Edge قدیمی اجرا کنید.</p>
+  </div>
+{{/if}}
+
 <!-- Stats KPI Cards -->
 <div class="stats-grid">
   <div class="stat-card">

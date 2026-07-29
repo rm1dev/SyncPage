@@ -51,9 +51,21 @@ bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/install-n
   https://MASTER_URL/api/nodes/bootstrap/TOKEN
 ```
 
-1. Once installed, click **Verify** in the Admin Panel to mark the node status as `ONLINE`.
+1. Once installed, click **تایید اتصال** in the Admin Panel to mark the node status as `ONLINE`.
 
 Each node maintains a dedicated queue (`landing.sync.<id>`); the Master node broadcasts events to **all** registered nodes.
+
+### Update (Master / Edge)
+
+The Admin panel compares local `package.json` version with GitHub and shows a warning + copyable command when outdated.
+
+```bash
+# Master (preserves /opt/syncpage/.env)
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/update.sh)
+
+# Edge node (preserves /opt/syncpage-node/.env)
+bash <(curl -Ls https://raw.githubusercontent.com/rm1dev/SyncPage/main/update-node.sh)
+```
 
 ---
 
@@ -246,6 +258,7 @@ When nodes are registered via the Admin Panel, each Edge receives its own dedica
 
 - `Makefile` — shortcuts for Master / Edge / local compose (`make help`)
 - `install.sh` / `install-node.sh` — One-line installers for Master and Edge nodes
+- `update.sh` / `update-node.sh` — One-line updaters (keeps `.env`, rebuilds compose)
 - `docker-compose.master.yml` / `docker-compose.node.yml` — Docker orchestration manifests
 - `src/modules/nodes` — Node management, bootstrapping, and health verification
 - `src/modules/sync` — Outbox publisher and per-node message synchronization

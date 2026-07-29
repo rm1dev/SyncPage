@@ -13,6 +13,7 @@ import { CreateEdgeNodeDto, UpdateEdgeNodeDto } from './dto/edge-node.dto';
 
 export type EdgeNodeWithInstall = EdgeNode & {
   installCommand: string;
+  updateCommand: string;
   bootstrapUrl: string;
 };
 
@@ -129,11 +130,110 @@ export class NodesService {
     };
   }
 
-  /** آدرس‌های health برای Verify — نود هم‌محل ممکنه فقط از host.docker.internal جواب بده */
+  /** فقط لوکال / هم‌محل با Master — برای نود ریموت host.docker.internal اشتباهه */
+  private isLoopbackHost(host: string): boolean {
+    const h = host.trim().toLowerCase();
+    return (
+      h === 'localhost' ||
+      h === '127.0.0.1' ||
+      h === '::1' ||
+      h === '0.0.0.0' ||
+      h === 'host.docker.internal'
+    );
+  }
+
+  /** IP/hostnameهای خودِ Master — اگه host نود یکی از اینا باشه یعنی هم‌محل روی همین سرور */
+  private masterOwnHosts(): Set<string> {
+    const hosts = new Set<string>();
+    for (const raw of [
+      this.config.get<string>('publicBaseUrl'),
+      this.config.get<string>('masterInternalUrl'),
+      this.config.get<string>('rabbitmqPublicUrl'),
+    ]) {
+      if (!raw) continue;
+      try {
+        const withProto = raw.includes('://') ? raw : `http://${raw}`;
+        const hostname = new URL(withProto).hostname;
+        if (hostname) hosts.add(hostname.toLowerCase());
+      } catch {
+        /* URL خراب بود، رد شو */
+      }
+    }
+    return hosts;
+  }
+
+  private shouldTryDockerGateway(host: string): boolean {
+    if (this.isLoopbackHost(host)) return true;
+    return this.masterOwnHosts().has(host.trim().toLowerCase());
+  }
+
+  /** آدرس‌های health برای تایید — docker gateway فقط برای نود هم‌محل */
   private healthUrls(node: EdgeNode): string[] {
-    const hosts = [node.host, 'host.docker.internal'];
+    const hosts = [node.host];
+    if (this.shouldTryDockerGateway(node.host)) {
+      hosts.push('host.docker.internal');
+    }
     const unique = [...new Set(hosts.filter(Boolean))];
     return unique.map((h) => `http://${h}:${node.port}/api/health`);
+  }
+
+  /** پیام خطای شبکه/HTTP رو برای پنل فارسی می‌کنه */
+  private translateProbeError(err: unknown, url: string): string {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/ECONNREFUSED/i.test(msg)) {
+      return `اتصال رد شد — سرویس روی این آدرس پاسخ نمی‌دهد (${url})`;
+    }
+    if (/ETIMEDOUT|timeout of \d+ms exceeded|Timeout/i.test(msg)) {
+      return `زمان اتصال تمام شد (${url})`;
+    }
+    if (/ENOTFOUND/i.test(msg)) {
+      return `آدرس پیدا نشد (${url})`;
+    }
+    if (/ECONNRESET|reset by peer/i.test(msg)) {
+      return `اتصال قطع شد (${url})`;
+    }
+    if (/EHOSTUNREACH|ENETUNREACH/i.test(msg)) {
+      return `شبکه به این آدرس دسترسی ندارد (${url})`;
+    }
+    if (/certificate|SSL|TLS/i.test(msg)) {
+      return `خطای گواهی SSL/TLS (${url})`;
+    }
+    return `${msg} (${url})`;
+  }
+
+  /**
+   * فقط health رو می‌خونه (بدون عوض کردن وضعیت) — برای چک نسخه
+   */
+  async probeHealth(id: string): Promise<{
+    ok: boolean;
+    version?: string;
+    role?: string;
+    nodeId?: string;
+    url?: string;
+  } | null> {
+    const node = await this.prisma.edgeNode.findUnique({ where: { id } });
+    if (!node) return null;
+
+    for (const url of this.healthUrls(node)) {
+      try {
+        const { data, status } = await axios.get(url, {
+          timeout: 4000,
+          validateStatus: () => true,
+        });
+        if (status === 200 && data?.ok) {
+          return {
+            ok: true,
+            version: data.version ? String(data.version) : undefined,
+            role: data.role ? String(data.role) : undefined,
+            nodeId: data.nodeId ? String(data.nodeId) : undefined,
+            url,
+          };
+        }
+      } catch {
+        /* آدرس بعدی */
+      }
+    }
+    return { ok: false };
   }
 
   /**
@@ -141,10 +241,10 @@ export class NodesService {
    */
   async verify(id: string): Promise<EdgeNodeWithInstall> {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
-    if (!node) throw new NotFoundException('Node not found');
+    if (!node) throw new NotFoundException('نود پیدا نشد');
 
     const urls = this.healthUrls(node);
-    let lastMessage = 'No health URL tried';
+    const errors: string[] = [];
 
     for (const url of urls) {
       try {
@@ -154,18 +254,20 @@ export class NodesService {
         });
 
         if (status !== 200 || !data?.ok) {
-          lastMessage = `Health returned HTTP ${status} (${url})`;
+          errors.push(`پاسخ نامعتبر از health: HTTP ${status} (${url})`);
           continue;
         }
 
         const role = String(data.role || '').toUpperCase();
         if (role !== 'EDGE' && role !== 'SLAVE') {
-          lastMessage = `Unexpected role: ${data.role} (${url})`;
+          errors.push(`نقش غیرمنتظره: ${data.role} (${url})`);
           continue;
         }
 
         if (data.nodeId && data.nodeId !== node.id) {
-          lastMessage = `Node ID mismatch: expected ${node.id}, got ${data.nodeId}`;
+          errors.push(
+            `شناسه نود مطابقت ندارد: انتظار ${node.id}، دریافت ${data.nodeId} (${url})`,
+          );
           continue;
         }
 
@@ -180,9 +282,13 @@ export class NodesService {
         this.logger.log(`Node verified online: ${node.title} via ${url}`);
         return this.withInstallMeta(updated);
       } catch (err) {
-        lastMessage = err instanceof Error ? err.message : String(err);
+        errors.push(this.translateProbeError(err, url));
       }
     }
+
+    const lastMessage =
+      errors.join(' | ') ||
+      `هیچ آدرس health برای ${node.host}:${node.port} امتحان نشد`;
 
     const updated = await this.prisma.edgeNode.update({
       where: { id },
@@ -193,7 +299,7 @@ export class NodesService {
     });
     this.logger.warn(`Node verify failed (${node.title}): ${lastMessage}`);
     throw new BadRequestException({
-      message: `Verify failed: ${lastMessage}`,
+      message: `تایید ناموفق: ${lastMessage}`,
       node: this.withInstallMeta(updated),
     });
   }
@@ -214,10 +320,12 @@ export class NodesService {
       this.config.get<string>('githubRepo') || 'rm1dev/SyncPage';
     const githubBranch = this.config.get<string>('githubBranch') || 'main';
     const scriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/install-node.sh`;
+    const updateScriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/update-node.sh`;
     const bootstrapUrl = `${publicBaseUrl}/api/nodes/bootstrap/${node.installToken}`;
     // کامند silent — بدون سوال
     const installCommand = `bash <(curl -Ls ${scriptUrl}) ${bootstrapUrl}`;
+    const updateCommand = `bash <(curl -Ls ${updateScriptUrl})`;
 
-    return { ...node, installCommand, bootstrapUrl };
+    return { ...node, installCommand, updateCommand, bootstrapUrl };
   }
 }
