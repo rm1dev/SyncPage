@@ -55,26 +55,45 @@ stop_existing_edge() {
 verify_amqp_from_app() {
   local compose_file="$1"
   echo -e "${yellow}Verifying AMQP from app container...${plain}"
-  local i
+  local i out rc
   for i in 1 2 3 4 5 6 7 8; do
-    if docker compose -f "$compose_file" --env-file .env exec -T app node -e '
+    # checkQueue اگه صف هنوز ساخته نشده باشه خطا می‌ده؛ assertQueue امن‌تره
+    set +e
+    out="$(docker compose -f "$compose_file" --env-file .env exec -T app node -e '
 const amqp=require("amqplib");
+const net=require("net");
 (async()=>{
-  const url=process.env.RABBITMQ_URL;
-  const q=process.env.RABBITMQ_QUEUE;
+  const url=process.env.RABBITMQ_URL||"";
+  const q=process.env.RABBITMQ_QUEUE||"";
   if(!url||!q){ console.error("missing RABBITMQ_URL/QUEUE"); process.exit(2); }
+  let host="?", port=5672;
+  try {
+    const u=new URL(url);
+    host=u.hostname; port=Number(u.port||5672);
+  } catch {}
+  await new Promise((resolve,reject)=>{
+    const s=net.connect(port,host,()=>{s.destroy();resolve();});
+    s.setTimeout(8000,()=>{s.destroy();reject(new Error("tcp timeout "+host+":"+port));});
+    s.on("error",e=>reject(new Error("tcp fail "+e.message)));
+  });
+  console.log("tcp ok "+host+":"+port);
   try{
     const c=await amqp.connect(url,{timeout:10000});
     const ch=await c.createChannel();
-    const info=await ch.checkQueue(q);
-    console.log("amqp ok consumers="+info.consumerCount+" messages="+info.messageCount);
+    const info=await ch.assertQueue(q,{durable:true});
+    console.log("amqp ok queue="+info.queue+" messages="+info.messageCount);
     await c.close();
     process.exit(0);
   }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
 })();
-' 2>/dev/null; then
+' 2>&1)"
+    rc=$?
+    set -e
+    echo "$out"
+    if [[ "$rc" -eq 0 ]]; then
       return 0
     fi
+    echo -e "${yellow}AMQP attempt ${i}/8 failed — retry...${plain}"
     sleep 3
   done
   return 1

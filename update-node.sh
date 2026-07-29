@@ -164,18 +164,23 @@ AMQP_OK=0
 if [[ "$OK" -eq 1 ]]; then
   echo -e "${yellow}Verifying AMQP...${plain}"
   for i in $(seq 1 8); do
-    if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T app node -e '
+    set +e
+    AMQP_OUT="$(docker compose -f "$COMPOSE_FILE" --env-file .env exec -T app node -e '
 const amqp=require("amqplib");
 (async()=>{
   try{
     const c=await amqp.connect(process.env.RABBITMQ_URL,{timeout:10000});
     const ch=await c.createChannel();
-    await ch.checkQueue(process.env.RABBITMQ_QUEUE);
+    await ch.assertQueue(process.env.RABBITMQ_QUEUE,{durable:true});
     console.log("amqp ok");
     await c.close();
-  }catch(e){ console.error(e.message); process.exit(1); }
+  }catch(e){ console.error("amqp fail: "+e.message); process.exit(1); }
 })();
-' 2>/dev/null; then
+' 2>&1)"
+    AMQP_RC=$?
+    set -e
+    echo "$AMQP_OUT"
+    if [[ "$AMQP_RC" -eq 0 ]]; then
       AMQP_OK=1
       break
     fi
