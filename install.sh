@@ -54,6 +54,32 @@ detect_public_ip() {
     || echo "127.0.0.1"
 }
 
+# آی‌پی تشخیص‌داده‌شده رو تایید می‌گیره؛ اگه نه، دستی وارد می‌کنه
+confirm_or_enter_ip() {
+  local detected="$1"
+  if [[ "${NONINTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    PUBLIC_IP="${PUBLIC_IP:-$detected}"
+    echo -e "Server IP: ${yellow}${PUBLIC_IP}${plain} (non-interactive)"
+    return
+  fi
+
+  echo -e "Detected server IP: ${yellow}${detected}${plain}"
+  prompt "Is this IP correct? (y/n)" "y"
+  if [[ "$REPLY" =~ ^[Yy] ]]; then
+    PUBLIC_IP="$detected"
+  else
+    note "Enter the public IP that Edge/CDN should reach (not a private LAN IP unless intentional)."
+    prompt "Server public IP" "$detected"
+    PUBLIC_IP="$REPLY"
+  fi
+
+  if [[ -z "$PUBLIC_IP" ]]; then
+    echo -e "${red}Server IP is required${plain}"
+    exit 1
+  fi
+  echo -e "Using server IP: ${green}${PUBLIC_IP}${plain}"
+}
+
 install_docker() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     echo -e "${green}Docker already installed${plain}"
@@ -74,8 +100,7 @@ echo -e "${green}╚════════════════════
 echo -e "Repo: ${SYNCPAGE_GITHUB_REPO} @ ${SYNCPAGE_GITHUB_BRANCH}"
 echo ""
 
-PUBLIC_IP="$(detect_public_ip)"
-echo -e "Detected server IP: ${yellow}${PUBLIC_IP}${plain}"
+confirm_or_enter_ip "$(detect_public_ip)"
 echo ""
 
 prompt "Install directory" "$INSTALL_DIR_DEFAULT"
