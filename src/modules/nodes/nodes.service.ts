@@ -14,6 +14,7 @@ import { CreateEdgeNodeDto, UpdateEdgeNodeDto } from './dto/edge-node.dto';
 export type EdgeNodeWithInstall = EdgeNode & {
   installCommand: string;
   updateCommand: string;
+  uninstallCommand: string;
   bootstrapUrl: string;
 };
 
@@ -321,11 +322,19 @@ export class NodesService {
     const githubBranch = this.config.get<string>('githubBranch') || 'main';
     const scriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/install-node.sh`;
     const updateScriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/update-node.sh`;
+    const uninstallScriptUrl = `https://raw.githubusercontent.com/${githubRepo}/${githubBranch}/uninstall-node.sh`;
     const bootstrapUrl = `${publicBaseUrl}/api/nodes/bootstrap/${node.installToken}`;
     // کامند silent — بدون سوال
     const installCommand = `bash <(curl -Ls ${scriptUrl}) ${bootstrapUrl}`;
     const updateCommand = `bash <(curl -Ls ${updateScriptUrl})`;
+    const uninstallCommand = `bash <(curl -Ls ${uninstallScriptUrl})`;
 
-    return { ...node, installCommand, updateCommand, bootstrapUrl };
+    return {
+      ...node,
+      installCommand,
+      updateCommand,
+      uninstallCommand,
+      bootstrapUrl,
+    };
   }
 }

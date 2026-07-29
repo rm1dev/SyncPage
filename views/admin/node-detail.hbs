@@ -94,6 +94,18 @@
     <code id="update-cmd">{{node.updateCommand}}</code>
     <button type="button" class="btn btn-secondary btn-copy" data-copy="#update-cmd">کپی</button>
   </div>
+
+  <div class="section-header" style="margin-top:1.5rem;">
+    <span>کامند حذف کامل نود از سرور</span>
+  </div>
+  <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
+    روی سرور Edge با root اجرا کنید: کانتینرها، volumeها و پوشه <code>/opt/syncpage-node</code> پاک می‌شوند.
+    بعد از آن از بخش پایین، نود را از پنل Master هم حذف کنید.
+  </p>
+  <div class="install-cmd-box">
+    <code id="uninstall-cmd">{{node.uninstallCommand}}</code>
+    <button type="button" class="btn btn-secondary btn-copy" data-copy="#uninstall-cmd">کپی</button>
+  </div>
   {{#if node.lastError}}
     <p style="color: var(--color-danger); margin-top: 0.75rem; font-size: 0.85rem;">آخرین خطا: {{node.lastError}}</p>
   {{/if}}
@@ -139,10 +151,13 @@
 </div>
 
 <div class="content-wrapper mt-3">
-  <div class="section-header"><span>حذف نود</span></div>
-  <form method="post" action="/spadmin/nodes/{{node.id}}/delete" onsubmit="return confirm('نود برای همیشه حذف شود؟')">
+  <div class="section-header"><span>حذف نود از پنل</span></div>
+  <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
+    فقط رکورد و صف را از Master پاک می‌کند. برای پاک کردن فایل‌ها از سرور Edge، اول کامند حذف کامل بالا را اجرا کنید.
+  </p>
+  <form method="post" action="/spadmin/nodes/{{node.id}}/delete" onsubmit="return confirm('نود برای همیشه از پنل حذف شود؟')">
     <button type="submit" class="btn" style="background: var(--color-danger-bg); color: var(--color-danger);">
-      <span>حذف نود</span>
+      <span>حذف از پنل Master</span>
     </button>
   </form>
 </div>
