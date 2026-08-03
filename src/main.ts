@@ -74,6 +74,8 @@ async function bootstrap() {
 
   if (isEdge()) {
     const queue = process.env.RABBITMQ_QUEUE || 'landing.sync';
+    // Edge ریموت: heartbeat بلند — مسیر بین‌الملل با ۳۰s مدام missed heartbeats می‌ده
+    const heartbeat = parseInt(process.env.RABBITMQ_HEARTBEAT || '600', 10);
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
       options: {
@@ -83,7 +85,9 @@ async function bootstrap() {
         noAck: false,
         prefetchCount: 1,
         socketOptions: {
-          heartbeatIntervalInSeconds: 30,
+          heartbeatIntervalInSeconds: Number.isFinite(heartbeat)
+            ? heartbeat
+            : 600,
           reconnectTimeInSeconds: 5,
         },
       },

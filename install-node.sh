@@ -394,6 +394,9 @@ OUTBOX_MAX_ATTEMPTS=10
 # وقتی AMQP قطع باشه لندینگ‌ها از HTTP pull بیان
 SYNC_PULL_ENABLED=1
 SYNC_PULL_MS=20000
+# مسیر بین‌الملل: heartbeat بلند تا missed heartbeats کمتر بشه (۰=خاموش)
+RABBITMQ_HEARTBEAT=600
+RABBITMQ_CONNECT_TIMEOUT_MS=60000
 
 APP_PORT=${PORT}
 HTTP_PORT=${PORT}

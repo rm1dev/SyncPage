@@ -447,7 +447,7 @@ export class AdminController {
     try {
       await this.nodes.verify(id);
       return res.redirect(
-        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود تایید شد — HTTP و صف Rabbit هر دو اوکی هستند')}`,
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('نود تایید شد (HTTP). اگر Rabbit قطع باشد لندینگ از HTTP pull می‌آید')}`,
       );
     } catch (err: unknown) {
       let text = 'تایید ناموفق';

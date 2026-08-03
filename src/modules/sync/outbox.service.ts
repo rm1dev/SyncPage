@@ -74,11 +74,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   async getRabbitStatus(): Promise<RabbitHealthStatus> {
     const queue = this.edgeQueue();
     if (!this.channel || !this.connection) {
-      return {
-        ok: false,
-        queue,
-        error: this.lastConnectError || 'RabbitMQ not connected',
-      };
+      const error = this.connecting
+        ? this.lastConnectError || 'RabbitMQ connecting…'
+        : this.lastConnectError || 'RabbitMQ not connected';
+      return { ok: false, queue, error };
     }
     try {
       await this.channel.checkQueue(queue);
@@ -126,10 +125,57 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     this.lastConnectError = reason;
   }
 
+  /** timeout اتصال — مسیر بین‌الملل گاهی کند است ولی بدون سقف برای همیشه هنگ می‌کنه */
+  private connectTimeoutMs() {
+    const raw = process.env.RABBITMQ_CONNECT_TIMEOUT_MS;
+    const n = raw ? parseInt(raw, 10) : 45_000;
+    return Number.isFinite(n) && n > 0 ? n : 45_000;
+  }
+
+  private redactAmqpUrl(url: string) {
+    return url.replace(/:[^:@/]+@/, ':***@');
+  }
+
+  /** heartbeat ثانیه — مسیر بین‌الملل با ۳۰s مدام missed heartbeats می‌خوره */
+  private heartbeatSeconds() {
+    const raw = process.env.RABBITMQ_HEARTBEAT;
+    if (raw === '0' || raw === 'off') return 0;
+    if (raw) {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    // Edge ریموت: heartbeat خیلی بلند (یا ۰=خاموش) تا لینک شل قطع نشه
+    return getNodeRole() === 'EDGE' ? 600 : 60;
+  }
+
   private async connect() {
     const url = this.config.get<string>('rabbitmqUrl')!;
-    // بدون timeout کوتاه — روی مسیرهای بین‌الملل 15s باعث ETIMEDOUT الکی می‌شد
-    const connection = await amqp.connect(url);
+    const timeoutMs = this.connectTimeoutMs();
+    const heartbeat = this.heartbeatSeconds();
+    this.lastConnectError = `Connecting to ${this.redactAmqpUrl(url)} (timeout ${timeoutMs}ms, heartbeat ${heartbeat}s)…`;
+    this.logger.log(this.lastConnectError);
+
+    // اگه handshake وسط راه گیر کنه (TCP باز ولی AMQP فیلتر)، بدون سقف تا ابد می‌مونه
+    const pending = amqp.connect(url, { heartbeat });
+    let won: 'ok' | 'timeout' | null = null;
+    const connection = await Promise.race([
+      pending.then((c) => {
+        won = 'ok';
+        return c;
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          if (won === 'ok') return;
+          won = 'timeout';
+          void pending.then((c) => c.close()).catch(() => undefined);
+          reject(
+            new Error(
+              `RabbitMQ connect timeout after ${timeoutMs}ms (${this.redactAmqpUrl(url)})`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
     const channel = await connection.createChannel();
 
     connection.on('error', (err) => {
@@ -174,7 +220,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     this.lastConnectError = null;
 
     this.logger.log(
-      `Outbox connected to RabbitMQ (node queues: ${nodeQueues.length})`,
+      `Outbox connected to RabbitMQ (node queues: ${nodeQueues.length}, heartbeat ${heartbeat}s)`,
     );
   }
 

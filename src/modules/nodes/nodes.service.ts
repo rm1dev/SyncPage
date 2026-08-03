@@ -327,14 +327,16 @@ export class NodesService {
         }
 
         if (!rmq.ok) {
+          // مسیر بین‌الملل اغلب AMQP را authenticate می‌کند ولی heartbeat می‌کشد.
+          // لندینگ با HTTP pull می‌آید — نود را ONLINE می‌کنیم، وضعیت Rabbit جدا می‌ماند.
           const rabbitErr =
             rmq.error || 'اتصال نود به RabbitMQ / صف برقرار نیست';
           const updated = await this.prisma.edgeNode.update({
             where: { id },
             data: {
-              status: EdgeNodeStatus.ERROR,
+              status: EdgeNodeStatus.ONLINE,
               lastSeenAt: new Date(),
-              lastError: `HTTP اوکی است ولی Rabbit قطع است: ${rabbitErr}`.slice(
+              lastError: `HTTP اوکی — Rabbit ناپایدار/قطع (لندینگ از HTTP pull): ${rabbitErr}`.slice(
                 0,
                 500,
               ),
@@ -343,12 +345,9 @@ export class NodesService {
             },
           });
           this.logger.warn(
-            `Node HTTP ok but Rabbit down (${node.title}): ${rabbitErr}`,
+            `Node ONLINE via HTTP; Rabbit degraded (${node.title}): ${rabbitErr}`,
           );
-          throw new BadRequestException({
-            message: `تایید ناموفق: HTTP اوکی است ولی اتصال به صف Rabbit برقرار نیست — ${rabbitErr}`,
-            node: this.withInstallMeta(updated),
-          });
+          return this.withInstallMeta(updated);
         }
 
         const updated = await this.prisma.edgeNode.update({
