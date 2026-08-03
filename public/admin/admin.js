@@ -76,28 +76,200 @@ document.addEventListener('DOMContentLoaded', () => {
         const parsed = JSON.parse(jsonTextarea.value);
         jsonTextarea.value = JSON.stringify(parsed, null, 2);
         showToast('فرمت کد JSON با موفقیت مرتب شد.', 'success');
+        refreshLandingSnippets();
       } catch (err) {
         showToast('خطا در خواندن JSON: فرمت وارد شده معتبر نیست!', 'danger');
       }
     });
   }
 
-  // 4. کپی کامند نصب نود
+  // 4. کپی متن از data-copy (کامند نصب، اسنیپت فرم و …)
   document.querySelectorAll('[data-copy]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const sel = btn.getAttribute('data-copy');
       const el = sel ? document.querySelector(sel) : null;
       const text = el?.textContent?.trim() || '';
       if (!text) return;
+      const okMsg =
+        btn.getAttribute('data-copy-toast') || 'متن کپی شد.';
       try {
         await navigator.clipboard.writeText(text);
-        showToast('کامند نصب کپی شد.', 'success');
+        showToast(okMsg, 'success');
       } catch {
         showToast('کپی نشد — دستی انتخاب کنید.', 'danger');
       }
     });
   });
+
+  // 5. اسنیپت HTML + اسکریپت برای لندینگ (جدا از هم)
+  const snippetsRoot = document.querySelector('[data-form-snippets]');
+  if (snippetsRoot) {
+    const refreshBtn = document.getElementById('refresh-snippets-btn');
+    const keyInput = /** @type {HTMLInputElement} */ (document.getElementById('key'));
+    refreshLandingSnippets();
+    refreshBtn?.addEventListener('click', () => {
+      refreshLandingSnippets();
+      showToast('اسنیپت‌ها بروزرسانی شد.', 'success');
+    });
+    keyInput?.addEventListener('input', refreshLandingSnippets);
+    jsonTextarea?.addEventListener('change', refreshLandingSnippets);
+  }
 });
+
+/**
+ * از فیلدهای JSON صفحه، HTML فرم و اسکریپت سابمیشن رو می‌سازه
+ */
+function refreshLandingSnippets() {
+  const htmlEl = document.getElementById('snippet-html');
+  const scriptEl = document.getElementById('snippet-script');
+  if (!htmlEl || !scriptEl) return;
+
+  const keyInput = /** @type {HTMLInputElement} */ (document.getElementById('key'));
+  const bodyEl = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
+  const key = (keyInput?.value || '').trim() || 'YOUR_FORM_KEY';
+
+  let fields = [];
+  try {
+    const parsed = JSON.parse(bodyEl?.value || '[]');
+    fields = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    htmlEl.textContent =
+      '<!-- Fix the JSON fields above, then refresh snippets -->';
+    scriptEl.textContent =
+      '<!-- Fix the JSON fields above, then refresh snippets -->';
+    return;
+  }
+
+  const formId = `sp-form-${sanitizeId(key)}`;
+  htmlEl.textContent = buildLandingFormHtml(formId, fields);
+  scriptEl.textContent = buildLandingFormScript(formId, key);
+}
+
+/** فقط کاراکترهای امن برای id */
+function sanitizeId(value) {
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, '-') || 'form';
+}
+
+/** escape ساده برای attribute HTML */
+function escapeAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlText(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * @param {string} formId
+ * @param {Array<Record<string, unknown>>} fields
+ */
+function buildLandingFormHtml(formId, fields) {
+  const parts = [`<form id="${escapeAttr(formId)}">`];
+
+  for (const field of fields) {
+    const name = String(field.name || '').trim();
+    if (!name) continue;
+    const label = String(field.label || name);
+    const required = field.required ? ' required' : '';
+    const type = String(field.type || 'text').toLowerCase();
+
+    if (type === 'textarea') {
+      parts.push(
+        `  <label>\n    ${escapeHtmlText(label)}\n    <textarea name="${escapeAttr(name)}"${required}></textarea>\n  </label>`,
+      );
+      continue;
+    }
+
+    if (type === 'select') {
+      const options = Array.isArray(field.options) ? field.options : [];
+      const opts = options
+        .map((opt) => {
+          if (opt && typeof opt === 'object') {
+            const o = /** @type {Record<string, unknown>} */ (opt);
+            const val = String(o.value ?? o.label ?? '');
+            const lab = String(o.label ?? o.value ?? '');
+            return `      <option value="${escapeAttr(val)}">${escapeHtmlText(lab)}</option>`;
+          }
+          return `      <option value="${escapeAttr(opt)}">${escapeHtmlText(opt)}</option>`;
+        })
+        .join('\n');
+      parts.push(
+        `  <label>\n    ${escapeHtmlText(label)}\n    <select name="${escapeAttr(name)}"${required}>\n${opts}\n    </select>\n  </label>`,
+      );
+      continue;
+    }
+
+    if (type === 'checkbox') {
+      parts.push(
+        `  <label>\n    <input type="checkbox" name="${escapeAttr(name)}" value="1"${required} />\n    ${escapeHtmlText(label)}\n  </label>`,
+      );
+      continue;
+    }
+
+    const inputType = [
+      'email',
+      'tel',
+      'number',
+      'password',
+      'date',
+      'url',
+      'hidden',
+    ].includes(type)
+      ? type
+      : 'text';
+
+    if (inputType === 'hidden') {
+      parts.push(
+        `  <input type="hidden" name="${escapeAttr(name)}" value="" />`,
+      );
+      continue;
+    }
+
+    parts.push(
+      `  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`,
+    );
+  }
+
+  parts.push('  <button type="submit">Submit</button>');
+  parts.push('</form>');
+  return parts.join('\n');
+}
+
+/**
+ * @param {string} formId
+ * @param {string} formKey
+ */
+function buildLandingFormScript(formId, formKey) {
+  return `<script>
+(function () {
+  var form = document.getElementById(${JSON.stringify(formId)});
+  if (!form) return;
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var data = Object.fromEntries(new FormData(form).entries());
+    var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')}, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function () { return {}; });
+      alert(err.message || 'Submit failed');
+      return;
+    }
+    alert('Submitted successfully');
+    form.reset();
+  });
+})();
+</script>`;
+}
 
 /**
  * Display dynamic Toast Notification

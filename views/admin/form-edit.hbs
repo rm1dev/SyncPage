@@ -61,3 +61,44 @@
     <a href="/spadmin" class="btn btn-secondary">انصراف</a>
   </div>
 </form>
+
+{{!-- اسنیپت‌های آماده برای چسبوندن داخل لندینگ --}}
+<div class="content-wrapper mt-3" id="landing-snippets" data-form-snippets>
+  <div class="section-header">
+    <span>۳. کد آماده برای لندینگ</span>
+    <button type="button" id="refresh-snippets-btn" class="btn btn-subtle">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      <span>بروزرسانی از فیلدها</span>
+    </button>
+  </div>
+  <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
+    HTML و اسکریپت را جداگانه کپی کنید و داخل <code>index.html</code> لندینگ بگذارید.
+    سابمیشن می‌رود به <code>/api/forms/&lt;key&gt;/submit</code> روی Edge.
+  </p>
+
+  <div class="snippet-block">
+    <div class="section-header" style="margin-bottom: 0.75rem;">
+      <span>فرم (HTML)</span>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-html" data-copy-toast="HTML فرم کپی شد.">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>کپی HTML</span>
+      </button>
+    </div>
+    <div class="install-cmd-box snippet-code-box">
+      <pre id="snippet-html" class="snippet-code" dir="ltr"></pre>
+    </div>
+  </div>
+
+  <div class="snippet-block mt-2">
+    <div class="section-header" style="margin-bottom: 0.75rem;">
+      <span>اسکریپت (JS)</span>
+      <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-script" data-copy-toast="اسکریپت کپی شد.">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>کپی اسکریپت</span>
+      </button>
+    </div>
+    <div class="install-cmd-box snippet-code-box">
+      <pre id="snippet-script" class="snippet-code" dir="ltr"></pre>
+    </div>
+  </div>
+</div>

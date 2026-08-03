@@ -857,6 +857,31 @@ textarea.form-control {
   text-align: left;
 }
 
+/* اسنیپت HTML/JS فرم برای لندینگ */
+.snippet-block {
+  margin-top: 0.25rem;
+}
+
+.snippet-code-box {
+  max-height: 320px;
+  overflow: auto;
+  align-items: stretch;
+}
+
+.snippet-code {
+  flex: 1;
+  margin: 0;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #a5f3fc;
+  direction: ltr;
+  text-align: left;
+}
+
 .form-hint {
   display: block;
   margin-top: 0.35rem;
