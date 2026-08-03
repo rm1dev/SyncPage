@@ -158,28 +158,62 @@ resolve_amqp_url() {
   return 1
 }
 
-# بعد از بالا اومدن اپ: اگه health گفت rabbitmq.ok=false، پورت جایگزین رو امتحان کن
-repair_amqp_after_start() {
-  local compose_file="$1"
-  local http_port="$2"
-  local health rabbit_ok
-  health="$(curl -fsS --max-time 5 "http://127.0.0.1:${http_port}/api/health" 2>/dev/null || true)"
-  [[ -z "$health" ]] && return 1
-  if echo "$health" | grep -qE '"rabbitmq"[[:space:]]*:[[:space:]]*\{[^}]*"ok"[[:space:]]*:[[:space:]]*true'; then
-    return 0
-  fi
+# health.rabbitmq.ok رو از JSON درمیاره → 1|0
+health_rabbit_ok() {
+  local health="$1"
+  [[ -z "$health" ]] && echo 0 && return
   if command -v node >/dev/null 2>&1; then
-    rabbit_ok="$(node -e "try{const j=JSON.parse(process.argv[1]);process.stdout.write(j.rabbitmq&&j.rabbitmq.ok?'1':'0')}catch{process.stdout.write('0')}" "$health" 2>/dev/null || echo 0)"
+    node -e "try{const j=JSON.parse(process.argv[1]);process.stdout.write(j.rabbitmq&&j.rabbitmq.ok?'1':'0')}catch{process.stdout.write('0')}" "$health" 2>/dev/null || echo 0
   elif command -v python3 >/dev/null 2>&1; then
-    rabbit_ok="$(python3 -c 'import json,sys
+    python3 -c 'import json,sys
 try:
  j=json.loads(sys.argv[1]); print(1 if (j.get("rabbitmq") or {}).get("ok") else 0)
 except Exception:
- print(0)' "$health" 2>/dev/null || echo 0)"
+ print(0)' "$health" 2>/dev/null || echo 0
   else
-    rabbit_ok=0
+    if echo "$health" | grep -qE '"rabbitmq"[^}]*"ok"[[:space:]]*:[[:space:]]*true'; then
+      echo 1
+    else
+      echo 0
+    fi
   fi
-  [[ "$rabbit_ok" == "1" ]] && return 0
+}
+
+# چند ثانیه صبر می‌کنه تا Outbox به Rabbit وصل بشه
+wait_rabbit_health() {
+  local http_port="$1"
+  local seconds="${2:-20}"
+  local i health
+  for i in $(seq 1 "$seconds"); do
+    health="$(curl -fsS --max-time 3 "http://127.0.0.1:${http_port}/api/health" 2>/dev/null || true)"
+    if [[ "$(health_rabbit_ok "$health")" == "1" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+set_rabbitmq_url() {
+  local new_url="$1"
+  if grep -q '^RABBITMQ_URL=' .env; then
+    sed -i.bak "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env || \
+      sed -i '' "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env
+  else
+    echo "RABBITMQ_URL=${new_url}" >> .env
+  fi
+}
+
+# بعد از بالا اومدن اپ: صبر کن؛ اگه قطع بود پورت جایگزین رو تست کن؛ فقط اگه health اوکی شد نگه دار
+repair_amqp_after_start() {
+  local compose_file="$1"
+  local http_port="$2"
+
+  echo -e "${yellow}Waiting for RabbitMQ connect (up to 20s)...${plain}"
+  if wait_rabbit_health "$http_port" 20; then
+    echo -e "${green}Health rabbitmq.ok=true${plain}"
+    return 0
+  fi
 
   local cur_url host port alt new_url
   cur_url="$(grep '^RABBITMQ_URL=' .env | head -1 | cut -d= -f2-)"
@@ -187,23 +221,33 @@ except Exception:
   port="$(amqp_port "$cur_url")"
   if [[ "$port" == "5672" ]]; then alt="45672"; else alt="5672"; fi
 
-  echo -e "${yellow}Health says RabbitMQ down — probing alternate port :${alt}${plain}"
-  if ! tcp_port_open "$host" "$alt" 4; then
-    echo -e "${yellow}Alternate :${alt} also unreachable — leave SYNC_PULL to sync landings${plain}"
+  echo -e "${yellow}RabbitMQ still down on :${port} — trying alternate :${alt}${plain}"
+  if ! tcp_port_open "$host" "$alt" 5; then
+    echo -e "${red}Neither AMQP port works from this Edge (:${port} down, :${alt} closed)${plain}"
+    echo -e "${yellow}On Master open cloud SG / firewall for TCP 45672 (preferred) and 5672${plain}"
+    echo -e "${yellow}Landings can still sync via HTTP pull until AMQP is fixed${plain}"
     return 1
   fi
 
   new_url="$(amqp_with_port "$cur_url" "$alt")"
-  if grep -q '^RABBITMQ_URL=' .env; then
-    sed -i.bak "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env || \
-      sed -i '' "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env
-  else
-    echo "RABBITMQ_URL=${new_url}" >> .env
+  set_rabbitmq_url "$new_url"
+  echo -e "${yellow}Temporarily using :${alt} — recreating app and verifying health...${plain}"
+  docker compose -f "$compose_file" --env-file .env up -d --force-recreate app >/dev/null
+  sleep 4
+
+  if wait_rabbit_health "$http_port" 25; then
+    echo -e "${green}AMQP OK on :${alt} — keeping RABBITMQ_URL=${new_url}${plain}"
+    return 0
   fi
-  echo -e "${green}Switched RABBITMQ_URL to :${alt} — recreating app${plain}"
-  docker compose -f "$compose_file" --env-file .env up -d --force-recreate app
-  sleep 6
-  return 0
+
+  # پورت جایگزین هم فایده نداشت — برگرد به قبلی
+  echo -e "${yellow}:${alt} TCP open but AMQP still failing — reverting to :${port}${plain}"
+  set_rabbitmq_url "$cur_url"
+  docker compose -f "$compose_file" --env-file .env up -d --force-recreate app >/dev/null
+  sleep 3
+  echo -e "${red}AMQP unreachable — check Master RABBITMQ_PUBLIC_URL / firewall / credentials${plain}"
+  echo -e "${yellow}Current RABBITMQ_URL=${cur_url}${plain}"
+  return 1
 }
 
 echo -e "${green}SyncPage Edge Node installer (silent)${plain}"
@@ -425,6 +469,17 @@ echo -e "Host:   ${HOST}:${PORT}"
 echo -e "Queue:  ${QUEUE}"
 echo -e "Dir:    ${INSTALL_DIR}"
 echo -e "Mode:   ${EDGE_NETWORK_MODE} (${COMPOSE_FILE})"
+echo -e "RABBITMQ_URL: $(grep '^RABBITMQ_URL=' .env | head -1 | cut -d= -f2-)"
+FINAL_HEALTH="$(curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null || true)"
+if [[ -n "$FINAL_HEALTH" ]]; then
+  if command -v node >/dev/null 2>&1; then
+    RMQ_ERR="$(node -e "try{const j=JSON.parse(process.argv[1]);const r=j.rabbitmq||{};process.stdout.write(r.ok?'ok':(r.error||'down'))}catch{process.stdout.write('unknown')}" "$FINAL_HEALTH" 2>/dev/null || true)"
+  else
+    RMQ_ERR="$(echo "$FINAL_HEALTH" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p' | head -1)"
+    RMQ_ERR="${RMQ_ERR:-check /api/health}"
+  fi
+  echo -e "RabbitMQ:  ${RMQ_ERR}"
+fi
 echo -e "Health: curl -fsS http://127.0.0.1:${PORT}/api/health"
 echo -e "Logs:   docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} --env-file ${INSTALL_DIR}/.env logs -f app"
 echo ""
