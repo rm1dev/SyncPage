@@ -136,6 +136,18 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     return url.replace(/:[^:@/]+@/, ':***@');
   }
 
+  /** heartbeat رو توی query استرینگ URL می‌ذاریم (amqplib v2 دیگه توی socketOptions قبول نمی‌کنه) */
+  private withHeartbeat(url: string, heartbeat: number): string {
+    try {
+      const u = new URL(url);
+      u.searchParams.set('heartbeat', String(heartbeat));
+      return u.toString();
+    } catch {
+      const sep = url.includes('?') ? '&' : '?';
+      return `${url}${sep}heartbeat=${heartbeat}`;
+    }
+  }
+
   /** heartbeat ثانیه — مسیر بین‌الملل با ۳۰s مدام missed heartbeats می‌خوره */
   private heartbeatSeconds() {
     const raw = process.env.RABBITMQ_HEARTBEAT;
@@ -152,11 +164,12 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     const url = this.config.get<string>('rabbitmqUrl')!;
     const timeoutMs = this.connectTimeoutMs();
     const heartbeat = this.heartbeatSeconds();
-    this.lastConnectError = `Connecting to ${this.redactAmqpUrl(url)} (timeout ${timeoutMs}ms, heartbeat ${heartbeat}s)…`;
+    const connectUrl = this.withHeartbeat(url, heartbeat);
+    this.lastConnectError = `Connecting to ${this.redactAmqpUrl(connectUrl)} (timeout ${timeoutMs}ms, heartbeat ${heartbeat}s)…`;
     this.logger.log(this.lastConnectError);
 
     // اگه handshake وسط راه گیر کنه (TCP باز ولی AMQP فیلتر)، بدون سقف تا ابد می‌مونه
-    const pending = amqp.connect(url, { heartbeat });
+    const pending = amqp.connect(connectUrl);
     let won: 'ok' | 'timeout' | null = null;
     const connection = await Promise.race([
       pending.then((c) => {
@@ -170,7 +183,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
           void pending.then((c) => c.close()).catch(() => undefined);
           reject(
             new Error(
-              `RabbitMQ connect timeout after ${timeoutMs}ms (${this.redactAmqpUrl(url)})`,
+              `RabbitMQ connect timeout after ${timeoutMs}ms (${this.redactAmqpUrl(connectUrl)})`,
             ),
           );
         }, timeoutMs);
