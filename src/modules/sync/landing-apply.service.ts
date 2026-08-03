@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+} from 'fs';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
@@ -115,16 +121,103 @@ export class LandingApplyService {
       : new Error(`Failed to download package for ${payload.slug}`);
   }
 
+  /**
+   * دانلود resumable با Range —
+   * مسیر بین‌الملل انتقال‌های طولانی رو وسط راه قطع می‌کنه (aborted)؛
+   * به‌جای شروع از صفر، از همون بایتی که رسیدیم ادامه می‌دیم
+   */
   private async downloadFile(url: string, dest: string) {
     const dir = join(dest, '..');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-    const response = await axios.get(url, {
-      responseType: 'stream',
-      timeout: 120_000,
-      maxRedirects: 5,
-      validateStatus: (s: number) => s >= 200 && s < 300,
-    });
-    await pipeline(response.data, createWriteStream(dest));
+    const maxResumes = parseInt(process.env.SYNC_DOWNLOAD_RESUMES || '30', 10);
+    // فایل ناقص از دور قبلِ همین URL به درد نمی‌خوره — تمیز شروع کن
+    rmSync(dest, { force: true });
+
+    let downloaded = 0;
+    let total: number | null = null;
+    let lastErr: unknown = null;
+
+    for (let attempt = 0; attempt <= maxResumes; attempt++) {
+      if (attempt > 0) {
+        this.logger.warn(
+          `Resuming download from byte ${downloaded}${total ? `/${total}` : ''} (attempt ${attempt}): ${url}`,
+        );
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      try {
+        const headers: Record<string, string> = {};
+        if (downloaded > 0) headers.Range = `bytes=${downloaded}-`;
+
+        const response = await axios.get(url, {
+          responseType: 'stream',
+          timeout: 120_000,
+          maxRedirects: 5,
+          headers,
+          validateStatus: (s: number) =>
+            downloaded > 0 ? s === 206 || s === 200 : s >= 200 && s < 300,
+        });
+
+        // سرور Range رو نشناخت و کل فایل رو از اول فرستاد
+        if (downloaded > 0 && response.status === 200) {
+          downloaded = 0;
+          rmSync(dest, { force: true });
+        }
+
+        if (total === null) {
+          const contentRange = String(
+            response.headers['content-range'] || '',
+          );
+          const m = contentRange.match(/\/(\d+)\s*$/);
+          if (m) {
+            total = parseInt(m[1], 10);
+          } else {
+            const cl = parseInt(
+              String(response.headers['content-length'] || ''),
+              10,
+            );
+            if (Number.isFinite(cl) && cl > 0) total = downloaded + cl;
+          }
+        }
+
+        try {
+          await pipeline(
+            response.data,
+            createWriteStream(dest, {
+              flags: downloaded > 0 ? 'a' : 'w',
+            }),
+          );
+        } finally {
+          downloaded = existsSync(dest) ? statSync(dest).size : 0;
+        }
+
+        // بدون content-length یعنی سرور سایز نگفته — همین که pipeline تموم شد کافیه
+        if (total === null || downloaded >= total) {
+          if (attempt > 0) {
+            this.logger.log(
+              `Download completed after ${attempt} resume(s): ${url} (${downloaded} bytes)`,
+            );
+          }
+          return;
+        }
+
+        // استریم بدون خطا بسته شد ولی فایل کامل نیست — ادامه بده
+        lastErr = new Error(
+          `Incomplete download: ${downloaded}/${total} bytes`,
+        );
+      } catch (err) {
+        lastErr = err;
+        downloaded = existsSync(dest) ? statSync(dest).size : 0;
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Download chunk failed at byte ${downloaded}${total ? `/${total}` : ''}: ${message}`,
+        );
+      }
+    }
+
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(`Download failed after ${maxResumes} resumes: ${url}`);
   }
 }
