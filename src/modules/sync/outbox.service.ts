@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { OutboxStatus, Prisma } from '@prisma/client';
 import * as amqp from 'amqplib';
 import type { Channel, ChannelModel } from 'amqplib';
+import axios from 'axios';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getNodeRole } from '../../config/role';
 import {
@@ -262,11 +263,55 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     return [this.edgeQueue()];
   }
 
+  /** آدرس‌های HTTP مستر برای push — همون منطق sync-pull */
+  private masterHttpUrls(path: string): string[] {
+    const urls: string[] = [];
+    const master = (
+      this.config.get<string>('masterInternalUrl') || ''
+    ).replace(/\/$/, '');
+    const pub = (this.config.get<string>('publicBaseUrl') || '').replace(
+      /\/$/,
+      '',
+    );
+    if (master) urls.push(`${master}${path}`);
+    if (pub && pub !== master) urls.push(`${pub}${path}`);
+    return urls;
+  }
+
+  /** ارسال سابمیشن به مستر از راه HTTP — وقتی AMQP روی مسیر بین‌الملل قطعه */
+  private async pushSubmissionViaHttp(
+    payload: FormSubmissionSyncPayload,
+  ): Promise<void> {
+    const urls = this.masterHttpUrls('/api/internal/sync/submissions');
+    if (!urls.length) {
+      throw new Error('MASTER_INTERNAL_URL / PUBLIC_BASE_URL not set');
+    }
+    let lastErr: unknown;
+    for (const url of urls) {
+      try {
+        const { data } = await axios.post<{ ok?: boolean }>(url, payload, {
+          timeout: 15_000,
+          validateStatus: (s: number) => s >= 200 && s < 300,
+        });
+        if (data?.ok !== true) {
+          throw new Error(`Unexpected response from ${url}`);
+        }
+        return;
+      } catch (err) {
+        lastErr = err;
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`HTTP submission push failed (${url}): ${message}`);
+      }
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error('HTTP submission push failed on all URLs');
+  }
+
   async flush() {
     if (this.publishing) return;
     this.publishing = true;
     try {
-      if (!this.channel) await this.connect();
       const maxAttempts = this.config.get<number>('outboxMaxAttempts') || 10;
       const role = getNodeRole();
 
@@ -285,29 +330,55 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
         orderBy: { createdAt: 'asc' },
         take: 20,
       });
+      if (!batch.length) return;
+
+      // کانال نداریم؟ وصل شدن رو بیرون از حلقه شروع کن (بدون await — flush معطل نمونه)
+      if (!this.channel && !this.connecting && !this.destroyed) {
+        void this.connectWithRetry();
+      }
 
       for (const event of batch) {
         try {
           const payload = event.payload as unknown as OutboxPayload;
-          const queues = await this.queuesForEvent(event.eventType);
 
-          const nestMessage = {
-            pattern: event.eventType,
-            data: payload,
-          };
-          const body = Buffer.from(JSON.stringify(nestMessage));
+          if (this.channel) {
+            // مسیر اصلی: AMQP
+            const queues = await this.queuesForEvent(event.eventType);
+            const nestMessage = {
+              pattern: event.eventType,
+              data: payload,
+            };
+            const body = Buffer.from(JSON.stringify(nestMessage));
 
-          for (const queue of queues) {
-            await this.channel!.assertQueue(queue, { durable: true });
-            const ok = this.channel!.sendToQueue(queue, body, {
-              persistent: true,
-              contentType: 'application/json',
-              messageId: event.idempotencyKey,
-              headers: { eventType: event.eventType },
-            });
-            if (!ok) {
-              throw new Error(`RabbitMQ publish buffer full (${queue})`);
+            for (const queue of queues) {
+              await this.channel.assertQueue(queue, { durable: true });
+              const ok = this.channel.sendToQueue(queue, body, {
+                persistent: true,
+                contentType: 'application/json',
+                messageId: event.idempotencyKey,
+                headers: { eventType: event.eventType },
+              });
+              if (!ok) {
+                throw new Error(`RabbitMQ publish buffer full (${queue})`);
+              }
             }
+            this.logger.log(
+              `Outbox sent via AMQP: ${event.idempotencyKey} → [${queues.join(', ')}]`,
+            );
+          } else if (
+            role !== 'MASTER' &&
+            event.eventType === 'form.submission.sync'
+          ) {
+            // مسیر جایگزین: سابمیشن Edge با HTTP بره مستر
+            await this.pushSubmissionViaHttp(
+              payload as FormSubmissionSyncPayload,
+            );
+            this.logger.log(
+              `Outbox sent via HTTP push: ${event.idempotencyKey}`,
+            );
+          } else {
+            // نه کانال نه مسیر HTTP — بدون سوزوندن attempts بذار برای دور بعد
+            continue;
           }
 
           await this.prisma.outboxEvent.update({
@@ -318,9 +389,6 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
               lastError: null,
             },
           });
-          this.logger.log(
-            `Outbox sent: ${event.idempotencyKey} → [${queues.join(', ')}]`,
-          );
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           this.logger.error(`Outbox publish failed: ${message}`);
@@ -335,6 +403,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
           await new Promise((r) => setTimeout(r, 500));
         }
       }
+    } catch (err) {
+      // نذاریم exception از flush بیرون بره (unhandled rejection = کرش پروسس)
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Outbox flush failed: ${message}`);
     } finally {
       this.publishing = false;
     }

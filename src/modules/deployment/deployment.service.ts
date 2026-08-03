@@ -174,7 +174,7 @@ export class DeploymentService implements OnModuleInit {
     return path;
   }
 
-  /** لیست لندینگ‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
+  /** لیست لندینگ‌ها و فرم‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
   async getSyncManifest() {
     const masterUrl = (
       this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
@@ -190,6 +190,11 @@ export class DeploymentService implements OnModuleInit {
       orderBy: { updatedAt: 'desc' },
     });
 
+    // فرم‌ها هم توی مانیفست — Edge بدون AMQP تعریف فرم رو از همین‌جا می‌گیره
+    const forms = await this.prisma.form.findMany({
+      orderBy: { updatedAt: 'desc' },
+    });
+
     return {
       landings: rows.map((row) => ({
         slug: row.slug,
@@ -200,6 +205,15 @@ export class DeploymentService implements OnModuleInit {
         ...(publicBase
           ? { downloadUrlFallback: `${publicBase}${packagePath(row.slug)}` }
           : {}),
+      })),
+      forms: forms.map((f) => ({
+        id: f.id,
+        title: f.title,
+        key: f.key,
+        slug: f.slug,
+        body: f.body,
+        updatedAt: f.updatedAt.toISOString(),
+        idempotencyKey: `form:${f.key}:${f.updatedAt.getTime()}`,
       })),
     };
   }
