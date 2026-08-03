@@ -89,6 +89,78 @@ if [[ ! -f .env ]]; then
   echo -e "${yellow}Restored .env from backup${plain}"
 fi
 
+# --- تعمیر AMQP عمومی برای Edgeها (نصب‌های قدیمی بدون RABBITMQ_PUBLIC_URL یا با :5672) ---
+env_get() {
+  grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
+}
+
+env_set() {
+  local key="$1" val="$2"
+  if grep -q "^${key}=" .env 2>/dev/null; then
+    sed -i.bak "s|^${key}=.*|${key}=${val}|" .env || sed -i '' "s|^${key}=.*|${key}=${val}|" .env
+  else
+    echo "${key}=${val}" >> .env
+  fi
+}
+
+detect_public_ip() {
+  curl -4 -fsS --max-time 5 https://ifconfig.me 2>/dev/null \
+    || curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null \
+    || hostname -I 2>/dev/null | awk '{print $1}' \
+    || echo ""
+}
+
+RMQ_PASS="$(env_get RABBITMQ_PASS)"
+RMQ_PASS="${RMQ_PASS:-syncpage}"
+RMQ_USER="$(env_get RABBITMQ_USER)"
+RMQ_USER="${RMQ_USER:-syncpage}"
+PUBLIC_PORT="$(env_get RABBITMQ_PUBLIC_PORT)"
+PUBLIC_PORT="${PUBLIC_PORT:-45672}"
+env_set RABBITMQ_PUBLIC_PORT "$PUBLIC_PORT"
+
+PUBLIC_URL_NOW="$(env_get RABBITMQ_PUBLIC_URL)"
+PUBLIC_BASE="$(env_get PUBLIC_BASE_URL)"
+MASTER_IP=""
+if [[ -n "$PUBLIC_BASE" ]]; then
+  MASTER_IP="$(echo "$PUBLIC_BASE" | sed -E 's#^https?://##; s#/.*##; s#:.*##')"
+fi
+if [[ -z "$MASTER_IP" || "$MASTER_IP" == "localhost" || "$MASTER_IP" == "127.0.0.1" ]]; then
+  MASTER_IP="$(detect_public_ip)"
+fi
+
+need_fix_public=0
+if [[ -z "$PUBLIC_URL_NOW" ]]; then
+  need_fix_public=1
+  echo -e "${yellow}RABBITMQ_PUBLIC_URL missing — will set for Edge bootstrap${plain}"
+elif echo "$PUBLIC_URL_NOW" | grep -qE '@(localhost|127\.0\.0\.1|rabbitmq)(:|/)'; then
+  need_fix_public=1
+  echo -e "${yellow}RABBITMQ_PUBLIC_URL is internal/localhost — rewriting for Edge${plain}"
+elif echo "$PUBLIC_URL_NOW" | grep -qE ':5672(/|$)'; then
+  # نصب‌های قدیمی اغلب :5672 دارن؛ به پورت جایگزین سوییچ کن
+  need_fix_public=1
+  echo -e "${yellow}RABBITMQ_PUBLIC_URL uses :5672 — switching to :${PUBLIC_PORT}${plain}"
+fi
+
+if [[ "$need_fix_public" -eq 1 ]]; then
+  if [[ -z "$MASTER_IP" ]]; then
+    echo -e "${yellow}Could not detect Master public IP — set RABBITMQ_PUBLIC_URL manually${plain}"
+  else
+    NEW_PUBLIC="amqp://${RMQ_USER}:${RMQ_PASS}@${MASTER_IP}:${PUBLIC_PORT}"
+    env_set RABBITMQ_PUBLIC_URL "$NEW_PUBLIC"
+    echo -e "${green}RABBITMQ_PUBLIC_URL=${NEW_PUBLIC}${plain}"
+  fi
+fi
+
+# فایروال AMQP (اگه فعال باشه)
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'Status: active'; then
+  ufw allow "${PUBLIC_PORT}/tcp" comment 'SyncPage RabbitMQ public' || true
+  ufw allow 5672/tcp comment 'SyncPage RabbitMQ' || true
+elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+  firewall-cmd --permanent --add-port="${PUBLIC_PORT}/tcp" || true
+  firewall-cmd --permanent --add-port=5672/tcp || true
+  firewall-cmd --reload || true
+fi
+
 echo -e "${yellow}Rebuilding Master stack...${plain}"
 docker compose -f docker-compose.master.yml --env-file .env up -d --build
 
@@ -110,6 +182,9 @@ if [[ "$OK" -eq 1 ]]; then
   VER="$(curl -fsS "http://127.0.0.1:${HTTP_PORT}/api/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
   echo -e "${green}Master updated successfully${plain}"
   [[ -n "$VER" ]] && echo -e "Version: ${green}${VER}${plain}"
+  FINAL_PUBLIC="$(env_get RABBITMQ_PUBLIC_URL)"
+  [[ -n "$FINAL_PUBLIC" ]] && echo -e "Edge AMQP: ${FINAL_PUBLIC}"
+  echo -e "${yellow}Cloud SG: allow TCP ${PUBLIC_PORT} (and 5672) from Edge IPs${plain}"
 else
   echo -e "${yellow}Stack rebuilt — health not ready yet. Check logs:${plain}"
   echo "  docker compose -f ${INSTALL_DIR}/docker-compose.master.yml logs -f app"

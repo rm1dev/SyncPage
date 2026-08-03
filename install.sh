@@ -94,6 +94,28 @@ install_docker() {
   fi
 }
 
+# پورت‌های AMQP رو برای Edge باز کن (اگه فایروال فعال باشه)
+open_amqp_firewall() {
+  local alt_port="${1:-45672}"
+  echo -e "${yellow}Opening AMQP firewall ports ${alt_port}/tcp and 5672/tcp (if firewall active)...${plain}"
+  if command -v ufw >/dev/null 2>&1; then
+    if ufw status 2>/dev/null | grep -qi 'Status: active'; then
+      ufw allow "${alt_port}/tcp" comment 'SyncPage RabbitMQ public' || true
+      ufw allow 5672/tcp comment 'SyncPage RabbitMQ' || true
+      echo -e "${green}ufw: allowed ${alt_port}/tcp and 5672/tcp${plain}"
+      return
+    fi
+  fi
+  if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+    firewall-cmd --permanent --add-port="${alt_port}/tcp" || true
+    firewall-cmd --permanent --add-port=5672/tcp || true
+    firewall-cmd --reload || true
+    echo -e "${green}firewalld: allowed ${alt_port}/tcp and 5672/tcp${plain}"
+    return
+  fi
+  echo -e "${yellow}No active ufw/firewalld — ensure cloud security group allows ${alt_port}/tcp (and 5672) from Edge IPs${plain}"
+}
+
 echo -e "${green}╔══════════════════════════════════════╗${plain}"
 echo -e "${green}║     SyncPage Master Installer        ║${plain}"
 echo -e "${green}╚══════════════════════════════════════╝${plain}"
@@ -140,10 +162,13 @@ note "Internal Master URL for Edge package download — prefer this server IP (n
 prompt "Master internal URL" "http://${PUBLIC_IP}:${HTTP_PORT}"
 MASTER_INTERNAL_URL="$REPLY"
 
+# پورت عمومی AMQP — پیش‌فرض 45672 (نه 5672؛ خیلی از مسیرهای بین‌الملل 5672 را می‌بندند)
+RABBITMQ_PUBLIC_PORT="${RABBITMQ_PUBLIC_PORT:-45672}"
+# URL عمومی برای Edgeها رو خودمون می‌سازیم؛ دیگه به کاربر وابسته نیستیم
+RABBITMQ_PUBLIC_URL="amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:${RABBITMQ_PUBLIC_PORT}"
 echo ""
-note "AMQP URL Edge nodes use for queues — must be Master IP, not the CDN domain."
-prompt "RabbitMQ URL for Edge nodes" "amqp://syncpage:${RMQ_PASS}@${PUBLIC_IP}:45672"
-RABBITMQ_PUBLIC_URL="$REPLY"
+note "Edge AMQP URL (auto): ${RABBITMQ_PUBLIC_URL}"
+note "Ports ${RABBITMQ_PUBLIC_PORT} and 5672 will be published; Edge prefers :${RABBITMQ_PUBLIC_PORT}."
 
 echo ""
 note "Also install an Edge node on this same server? (landings on a separate port)"
@@ -161,6 +186,7 @@ if [[ "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
 fi
 
 install_docker
+open_amqp_firewall "$RABBITMQ_PUBLIC_PORT"
 
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
@@ -195,6 +221,7 @@ RABBITMQ_USER=syncpage
 RABBITMQ_PASS=${RMQ_PASS}
 RABBITMQ_URL=amqp://syncpage:${RMQ_PASS}@rabbitmq:5672
 RABBITMQ_PUBLIC_URL=${RABBITMQ_PUBLIC_URL}
+RABBITMQ_PUBLIC_PORT=${RABBITMQ_PUBLIC_PORT}
 RABBITMQ_QUEUE=landing.sync
 RABBITMQ_MASTER_QUEUE=form.submission
 
@@ -323,6 +350,7 @@ echo -e "Panel:       ${PUBLIC_BASE_URL}/spadmin"
 echo -e "Admin token: ${ADMIN_TOKEN}"
 echo -e "Install dir: ${INSTALL_DIR}"
 echo -e "RabbitMQ:    ${RABBITMQ_PUBLIC_URL}"
+echo -e "AMQP ports:  ${RABBITMQ_PUBLIC_PORT} (preferred) + 5672"
 if [[ -n "$EDGE_NODE_ID" ]]; then
   echo -e "Local Edge:  http://${PUBLIC_IP}:${EDGE_PORT}/api/health  (id: ${EDGE_NODE_ID})"
   echo -e "Edge dir:    /opt/syncpage-node"
@@ -336,6 +364,7 @@ echo -e "Help:   make help"
 echo ""
 echo -e "${yellow}Important: do NOT run plain 'docker compose up' here (local dual stack).${plain}"
 echo -e "${yellow}Master panel: ${PUBLIC_BASE_URL}/spadmin  (host port ${HTTP_PORT} → app)${plain}"
+echo -e "${yellow}Cloud SG / firewall: allow TCP ${RABBITMQ_PUBLIC_PORT} (and 5672) from Edge IPs to this Master.${plain}"
 if [[ ! "$INSTALL_LOCAL_EDGE" =~ ^[Yy] ]]; then
   echo ""
   echo -e "${yellow}Next: open Admin → Nodes → Add node → copy install command${plain}"

@@ -140,6 +140,68 @@ else
   fi
 fi
 
+# --- تعمیر RABBITMQ_URL: پورت 5672↔45672 رو از این Edge تست کن ---
+tcp_port_open() {
+  local host="$1" port="$2" timeout_s="${3:-4}"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w "$timeout_s" "$host" "$port" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_s" bash -c "echo >/dev/tcp/${host}/${port}" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  (echo >/dev/tcp/"${host}"/"${port}") >/dev/null 2>&1 && return 0
+  return 1
+}
+
+amqp_host() { echo "$1" | sed -E 's#^[a-zA-Z]+://([^@/]+@)?([^:/]+).*#\2#'; }
+amqp_port() {
+  local p; p="$(echo "$1" | sed -nE 's#^[a-zA-Z]+://([^@/]+@)?[^:/]+:([0-9]+).*#\2#p')"
+  echo "${p:-5672}"
+}
+amqp_with_port() {
+  local url="$1" new_port="$2"
+  if echo "$url" | grep -qE ':[0-9]+(/|$)'; then
+    echo "$url" | sed -E "s#:[0-9]+(/|$)#:${new_port}\\1#"
+  else
+    echo "$url" | sed -E "s#(://[^/]+)#\\1:${new_port}#"
+  fi
+}
+
+if [[ "$is_remote" -eq 1 && -n "$RMQ_URL_NOW" && "$RMQ_URL_NOW" != *"host.docker.internal"* ]]; then
+  RMQ_HOST="$(amqp_host "$RMQ_URL_NOW")"
+  RMQ_PORT="$(amqp_port "$RMQ_URL_NOW")"
+  if [[ "$RMQ_PORT" == "5672" ]]; then RMQ_ALT="45672"; else RMQ_ALT="5672"; fi
+  echo -e "${yellow}Probing AMQP ${RMQ_HOST}:${RMQ_PORT} ...${plain}"
+  if tcp_port_open "$RMQ_HOST" "$RMQ_PORT" 4; then
+    echo -e "${green}AMQP reachable at :${RMQ_PORT}${plain}"
+  elif tcp_port_open "$RMQ_HOST" "$RMQ_ALT" 4; then
+    NEW_RMQ="$(amqp_with_port "$RMQ_URL_NOW" "$RMQ_ALT")"
+    sed -i.bak "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${NEW_RMQ}|" .env || \
+      sed -i '' "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${NEW_RMQ}|" .env
+    echo -e "${green}Switched RABBITMQ_URL to :${RMQ_ALT}${plain}"
+    RMQ_URL_NOW="$NEW_RMQ"
+  else
+    echo -e "${yellow}Neither :${RMQ_PORT} nor :${RMQ_ALT} reachable — open Master firewall/SG${plain}"
+    # ترجیح پروژه: 45672
+    if [[ "$RMQ_PORT" == "5672" ]]; then
+      NEW_RMQ="$(amqp_with_port "$RMQ_URL_NOW" "45672")"
+      sed -i.bak "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${NEW_RMQ}|" .env || \
+        sed -i '' "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${NEW_RMQ}|" .env
+      echo -e "${yellow}Prefwrote RABBITMQ_URL to :45672 for when firewall opens${plain}"
+    fi
+  fi
+fi
+
+# HTTP pull همیشه روشن باشه روی Edge ریموت
+if ! grep -q '^SYNC_PULL_ENABLED=' .env 2>/dev/null; then
+  echo "SYNC_PULL_ENABLED=1" >> .env
+  echo "SYNC_PULL_MS=20000" >> .env
+elif grep -q '^SYNC_PULL_ENABLED=0' .env 2>/dev/null; then
+  : # کاربر عمداً خاموش کرده
+fi
+
 # استک قدیمی (مدل قبلی) رو ببند تا با remote تداخل نکنه
 for f in docker-compose.node.yml docker-compose.node.host.yml docker-compose.node.remote.yml; do
   [[ -f "$f" ]] || continue
@@ -174,6 +236,11 @@ if [[ "$OK" -eq 1 ]]; then
   elif echo "$LOGS" | grep -qE 'connect ETIMEDOUT'; then
     echo -e "${yellow}AMQP ETIMEDOUT — HTTP pull will sync landings${plain}"
   fi
+  HEALTH_JSON="$(curl -fsS "http://127.0.0.1:${PORT}/api/health" 2>/dev/null || true)"
+  if echo "$HEALTH_JSON" | grep -qE '"rabbitmq"[^}]*"ok"[[:space:]]*:[[:space:]]*true'; then
+    AMQP_OK=1
+    echo -e "${green}Health rabbitmq.ok=true${plain}"
+  fi
 fi
 
 echo ""
@@ -181,6 +248,7 @@ if [[ "$OK" -eq 1 ]]; then
   VER="$(curl -fsS "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
   echo -e "${green}Edge node updated successfully${plain}"
   [[ -n "$VER" ]] && echo -e "Version: ${green}${VER}${plain}"
+  echo -e "RABBITMQ_URL: $(grep '^RABBITMQ_URL=' .env | head -1 | cut -d= -f2-)"
   if [[ "$AMQP_OK" -ne 1 ]]; then
     echo -e "${yellow}Note: AMQP may still be down; landings sync via HTTP pull${plain}"
   fi

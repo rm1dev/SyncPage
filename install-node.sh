@@ -72,6 +72,140 @@ peek_amqp_or_pull() {
   return 1
 }
 
+# TCP بازه؟ (nc یا bash /dev/tcp)
+tcp_port_open() {
+  local host="$1"
+  local port="$2"
+  local timeout_s="${3:-4}"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w "$timeout_s" "$host" "$port" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_s" bash -c "echo >/dev/tcp/${host}/${port}" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  # آخرین شانس بدون timeout
+  (echo >/dev/tcp/"${host}"/"${port}") >/dev/null 2>&1 && return 0
+  return 1
+}
+
+# از amqp://user:pass@host:port/... → host و port درمیاره
+amqp_host() {
+  echo "$1" | sed -E 's#^[a-zA-Z]+://([^@/]+@)?([^:/]+).*#\2#'
+}
+
+amqp_port() {
+  local p
+  p="$(echo "$1" | sed -nE 's#^[a-zA-Z]+://([^@/]+@)?[^:/]+:([0-9]+).*#\2#p')"
+  echo "${p:-5672}"
+}
+
+# پورت داخل URL رو عوض می‌کنه
+amqp_with_port() {
+  local url="$1"
+  local new_port="$2"
+  if echo "$url" | grep -qE ':[0-9]+(/|$)'; then
+    echo "$url" | sed -E "s#:[0-9]+(/|$)#:${new_port}\\1#"
+  else
+    # پورت نداشت — قبل از path اضافه کن
+    echo "$url" | sed -E "s#(://[^/]+)#\\1:${new_port}#"
+  fi
+}
+
+# قبل از نوشتن .env: پورت فعلی و جایگزین (5672↔45672) رو تست کن، بهترین رو بردار
+resolve_amqp_url() {
+  local url="$1"
+  local colocated="$2"
+  # هم‌محل با Docker bridge — probe به public IP گمراه‌کننده‌ست
+  if [[ "$colocated" == "1" ]]; then
+    echo "$url"
+    return 0
+  fi
+
+  local host port alt chosen
+  host="$(amqp_host "$url")"
+  port="$(amqp_port "$url")"
+  if [[ "$port" == "5672" ]]; then
+    alt="45672"
+  else
+    alt="5672"
+  fi
+
+  echo -e "${yellow}Probing AMQP ${host}:${port} ...${plain}" >&2
+  if tcp_port_open "$host" "$port" 4; then
+    echo -e "${green}AMQP reachable at ${host}:${port}${plain}" >&2
+    echo "$url"
+    return 0
+  fi
+
+  echo -e "${yellow}${host}:${port} closed/timeout — trying :${alt}${plain}" >&2
+  if tcp_port_open "$host" "$alt" 4; then
+    chosen="$(amqp_with_port "$url" "$alt")"
+    echo -e "${green}AMQP reachable at ${host}:${alt} — using that port${plain}" >&2
+    echo "$chosen"
+    return 0
+  fi
+
+  echo -e "${red}Neither ${host}:${port} nor :${alt} reachable from this Edge${plain}" >&2
+  echo -e "${yellow}Keeping bootstrap URL; open Master firewall/SG for TCP ${alt} (preferred) and ${port}${plain}" >&2
+  # ترجیح پیش‌فرض پروژه: 45672
+  if [[ "$port" == "5672" ]]; then
+    amqp_with_port "$url" "45672"
+  else
+    echo "$url"
+  fi
+  return 1
+}
+
+# بعد از بالا اومدن اپ: اگه health گفت rabbitmq.ok=false، پورت جایگزین رو امتحان کن
+repair_amqp_after_start() {
+  local compose_file="$1"
+  local http_port="$2"
+  local health rabbit_ok
+  health="$(curl -fsS --max-time 5 "http://127.0.0.1:${http_port}/api/health" 2>/dev/null || true)"
+  [[ -z "$health" ]] && return 1
+  if echo "$health" | grep -qE '"rabbitmq"[[:space:]]*:[[:space:]]*\{[^}]*"ok"[[:space:]]*:[[:space:]]*true'; then
+    return 0
+  fi
+  if command -v node >/dev/null 2>&1; then
+    rabbit_ok="$(node -e "try{const j=JSON.parse(process.argv[1]);process.stdout.write(j.rabbitmq&&j.rabbitmq.ok?'1':'0')}catch{process.stdout.write('0')}" "$health" 2>/dev/null || echo 0)"
+  elif command -v python3 >/dev/null 2>&1; then
+    rabbit_ok="$(python3 -c 'import json,sys
+try:
+ j=json.loads(sys.argv[1]); print(1 if (j.get("rabbitmq") or {}).get("ok") else 0)
+except Exception:
+ print(0)' "$health" 2>/dev/null || echo 0)"
+  else
+    rabbit_ok=0
+  fi
+  [[ "$rabbit_ok" == "1" ]] && return 0
+
+  local cur_url host port alt new_url
+  cur_url="$(grep '^RABBITMQ_URL=' .env | head -1 | cut -d= -f2-)"
+  host="$(amqp_host "$cur_url")"
+  port="$(amqp_port "$cur_url")"
+  if [[ "$port" == "5672" ]]; then alt="45672"; else alt="5672"; fi
+
+  echo -e "${yellow}Health says RabbitMQ down — probing alternate port :${alt}${plain}"
+  if ! tcp_port_open "$host" "$alt" 4; then
+    echo -e "${yellow}Alternate :${alt} also unreachable — leave SYNC_PULL to sync landings${plain}"
+    return 1
+  fi
+
+  new_url="$(amqp_with_port "$cur_url" "$alt")"
+  if grep -q '^RABBITMQ_URL=' .env; then
+    sed -i.bak "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env || \
+      sed -i '' "s|^RABBITMQ_URL=.*|RABBITMQ_URL=${new_url}|" .env
+  else
+    echo "RABBITMQ_URL=${new_url}" >> .env
+  fi
+  echo -e "${green}Switched RABBITMQ_URL to :${alt} — recreating app${plain}"
+  docker compose -f "$compose_file" --env-file .env up -d --force-recreate app
+  sleep 6
+  return 0
+}
+
 echo -e "${green}SyncPage Edge Node installer (silent)${plain}"
 echo -e "Bootstrap: ${BOOTSTRAP_URL}"
 
@@ -116,6 +250,17 @@ if [[ "${SYNCPAGE_COLOCATED:-0}" == "1" ]]; then
   RMQ_URL="$(echo "$RMQ_URL" | sed -E 's#@[^/:]+:#@host.docker.internal:#')"
   MASTER_URL="$(echo "$MASTER_URL" | sed -E 's#://[^/:]+#://host.docker.internal#')"
   echo -e "${yellow}Co-located mode: RabbitMQ/Master via host.docker.internal${plain}"
+fi
+
+# ریموت: پورت AMQP رو قبل از نوشتن .env تست کن (5672↔45672)
+if [[ "$COLOCATED" != "1" ]]; then
+  RMQ_URL="$(resolve_amqp_url "$RMQ_URL" "0" || true)"
+  # resolve ممکنه با exit 1 بیاد ولی stdout داره — دوباره تمیز بخون اگه خالی شد
+  if [[ -z "$RMQ_URL" ]]; then
+    echo -e "${red}Failed to resolve RABBITMQ_URL${plain}"
+    exit 1
+  fi
+  echo -e "AMQP URL: ${RMQ_URL}"
 fi
 
 INSTALL_DIR="${SYNCPAGE_NODE_DIR:-/opt/syncpage-node}"
@@ -202,6 +347,10 @@ PUBLIC_BASE_URL=${PUBLIC_URL}
 OUTBOX_POLL_MS=3000
 OUTBOX_MAX_ATTEMPTS=10
 
+# وقتی AMQP قطع باشه لندینگ‌ها از HTTP pull بیان
+SYNC_PULL_ENABLED=1
+SYNC_PULL_MS=20000
+
 APP_PORT=${PORT}
 HTTP_PORT=${PORT}
 EDGE_NETWORK_MODE=${EDGE_NETWORK_MODE}
@@ -229,8 +378,19 @@ done
 
 AMQP_OK=0
 if [[ "$HEALTH_OK" -eq 1 ]]; then
+  # اگه health گفت rabbitmq قطع است، پورت جایگزین رو امتحان کن (ریموت)
+  if [[ "$COLOCATED" != "1" ]]; then
+    repair_amqp_after_start "$COMPOSE_FILE" "$PORT" || true
+  fi
   if peek_amqp_or_pull "$COMPOSE_FILE"; then
     AMQP_OK=1
+  fi
+  # health نهایی
+  FINAL_HEALTH="$(curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null || true)"
+  if echo "$FINAL_HEALTH" | grep -qE '"ok"[[:space:]]*:[[:space:]]*true' \
+    && echo "$FINAL_HEALTH" | grep -qE '"rabbitmq"[^}]*"ok"[[:space:]]*:[[:space:]]*true'; then
+    AMQP_OK=1
+    echo -e "${green}Health rabbitmq.ok=true${plain}"
   fi
 fi
 
