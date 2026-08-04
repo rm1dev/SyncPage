@@ -156,8 +156,16 @@ export class LandingApplyService {
           maxRedirects: 5,
           headers,
           validateStatus: (s: number) =>
-            downloaded > 0 ? s === 206 || s === 200 : s >= 200 && s < 300,
+            downloaded > 0 ? (s === 206 || s === 200 || s === 416) : (s >= 200 && s < 300),
         });
+
+        if (response.status === 416) {
+          // Range Not Satisfiable: دانلود از قبل کامل شده است.
+          if (attempt > 0) {
+            this.logger.log(`Download considered complete (416 Range Not Satisfiable): ${url} (${downloaded} bytes)`);
+          }
+          return;
+        }
 
         // سرور Range رو نشناخت و کل فایل رو از اول فرستاد
         if (downloaded > 0 && response.status === 200) {
