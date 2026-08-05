@@ -29,6 +29,12 @@ model Form {
   webhookUrl      String?
   googleSheetUrl  String?
   googleSheetMeta Json?            // { "startRow": 2, "columns": { "fullName": "A", "email": "B" } }
+  
+  // تنظیمات OTP
+  otpEnabled      Boolean          @default(false)
+  otpTemplate     String?          // قالب پیامک (مثلا verify_code)
+  otpField        String?          // نام فیلدی که شماره موبایل توش قرار میگیره (مثلا mobile)
+  
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   submissions     FormSubmission[]
@@ -44,12 +50,21 @@ model FormSubmission {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  webhookStatus        OutboxStatus @default(SENT)
-  webhookAttempts      Int          @default(0)
-  webhookLastError     String?
+  // وضعیت احراز هویت پیامکی
+  otpStatus          String?   // 'VERIFIED', 'UNVERIFIED', 'NOT_REQUIRED'
+
+  webhookStatus      OutboxStatus @default(SENT)
+  webhookAttempts    Int          @default(0)
+  webhookLastError   String?
 
   @@index([formId])
   @@index([edgeNodeId])
+}
+
+// برای نگهداری تنظیمات سراسری مانند API Key کاوه‌نگار
+model SystemSetting {
+  key   String @id
+  value String
 }
 
 model Landing {

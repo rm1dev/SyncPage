@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateFormDto {
   @IsString()
@@ -26,6 +26,18 @@ export class CreateFormDto {
 
   @IsOptional()
   googleSheetMeta?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsBoolean()
+  otpEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  otpField?: string | null;
+
+  @IsOptional()
+  @IsString()
+  otpTemplate?: string | null;
 }
 
 export class UpdateFormDto {
@@ -53,6 +65,18 @@ export class UpdateFormDto {
 
   @IsOptional()
   googleSheetMeta?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsBoolean()
+  otpEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  otpField?: string | null;
+
+  @IsOptional()
+  @IsString()
+  otpTemplate?: string | null;
 }
 
 export class SubmitFormDto {

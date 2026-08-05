@@ -26,6 +26,9 @@ export interface FormSyncPayload {
     webhookUrl?: string | null;
     googleSheetUrl?: string | null;
     googleSheetMeta?: unknown;
+    otpEnabled?: boolean | null;
+    otpField?: string | null;
+    otpTemplate?: string | null;
   };
 }
 

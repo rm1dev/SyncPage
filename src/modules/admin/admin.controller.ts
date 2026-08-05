@@ -28,6 +28,7 @@ import { isOutdated } from '../../common/app-version';
 import 'jdate.js';
 
 import { WebhookService } from '../form-engine/webhook.service';
+import { KavenegarService } from '../form-engine/kavenegar.service';
 
 @Controller('spadmin')
 export class AdminController {
@@ -37,6 +38,7 @@ export class AdminController {
     private readonly nodes: NodesService,
     private readonly versions: VersionService,
     private readonly webhook: WebhookService,
+    private readonly kavenegar: KavenegarService,
   ) {}
 
   @Get('login')
@@ -124,17 +126,22 @@ export class AdminController {
             required: true,
           },
           {
-            type: 'email',
-            name: 'email',
-            label: 'ایمیل',
+            type: 'text',
+            name: 'mobile',
+            label: 'شماره موبایل',
             required: true,
           },
         ],
         null,
         2,
       ),
-      columnMappingJson: JSON.stringify({ fullName: "A", email: "B" }, null, 2),
+      columnMappingJson: JSON.stringify({ fullName: "A", mobile: "B" }, null, 2),
       startRow: 2,
+      form: {
+        otpEnabled: false,
+        otpField: 'mobile',
+        otpTemplate: 'verify',
+      }
     };
   }
 
@@ -172,6 +179,9 @@ export class AdminController {
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
         googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
+        otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
+        otpField: body.otpField || 'mobile',
+        otpTemplate: body.otpTemplate || 'verify',
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
     } catch (err) {
@@ -186,7 +196,10 @@ export class AdminController {
         startRow: body.startRow,
         form: { 
           title: body.title, key: body.key, slug: body.slug,
-          webhookUrl: body.webhookUrl, googleSheetUrl: body.googleSheetUrl
+          webhookUrl: body.webhookUrl, googleSheetUrl: body.googleSheetUrl,
+          otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
+          otpField: body.otpField,
+          otpTemplate: body.otpTemplate,
         },
       });
     }
@@ -209,6 +222,9 @@ export class AdminController {
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
         googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
+        otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
+        otpField: body.otpField || 'mobile',
+        otpTemplate: body.otpTemplate || 'verify',
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
     } catch (err) {
@@ -225,6 +241,9 @@ export class AdminController {
           slug: body.slug || form.slug,
           webhookUrl: body.webhookUrl,
           googleSheetUrl: body.googleSheetUrl,
+          otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
+          otpField: body.otpField,
+          otpTemplate: body.otpTemplate,
         },
         bodyJson: body.body,
         columnMappingJson: body.columnMapping,
@@ -340,13 +359,36 @@ export class AdminController {
     }
   }
 
-  @Get('submissions')
+  @Get('settings')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/settings')
+  async settingsPage(@Query('flash') flash?: string) {
+    const kavenegarApiKey = await this.kavenegar.getApiKey();
+    return {
+      layout: 'main',
+      title: 'تنظیمات سیستم',
+      active: 'settings',
+      kavenegarApiKey,
+      flash,
+    };
+  }
+
+  @Post('settings/kavenegar')
+  @UseGuards(AdminTokenGuard)
+  async saveKavenegarSetting(
+    @Body('apiKey') apiKey: string,
+    @Res() res: Response,
+  ) {
+    await this.kavenegar.setApiKey(apiKey);
+    return res.redirect('/spadmin/settings?flash=' + encodeURIComponent('تنظیمات کاوه‌نگار ذخیره شد'));
+  }
   @UseGuards(AdminTokenGuard)
   @Render('admin/submissions')
   async submissionsPage(
     @Query('formId') formId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('otpFilter') otpFilter?: string,
   ) {
     const forms = await this.forms.list();
     const activeFormId = formId || undefined;
@@ -375,6 +417,7 @@ export class AdminController {
       activeFormId,
       fromDate,
       toDate,
+      otpFilter,
     );
 
     const submissions = rawSubmissions.map((s) => {
@@ -390,6 +433,9 @@ export class AdminController {
         jalaliDate: jdateStr,
         nodeTitle: s.edgeNode ? s.edgeNode.title : 'سرور Master (لوکال)',
         payloadStr: JSON.stringify(s.payload, null, 2),
+        otpStatus: s.otpStatus,
+        isVerified: s.otpStatus === 'VERIFIED',
+        isUnverified: s.otpStatus === 'UNVERIFIED',
       };
     });
 
@@ -401,6 +447,7 @@ export class AdminController {
       activeFormId,
       startDate,
       endDate,
+      otpFilter,
       submissions,
     };
   }

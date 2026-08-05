@@ -51,7 +51,7 @@
           </td>
           <td class="actions">
             <form method="POST" action="/spadmin/failed-webhooks/{{id}}/retry">
-              <button type="submit" class="btn btn-primary" style="height: 32px; padding: 0 1rem; font-size: 0.85rem;">تلاش مجدد</button>
+              <button type="submit" class="btn btn-primary" style="height: 32px; padding: 0 1rem; font-size: 0.85rem;" onclick="return confirm('آیا می‌خواهید درخواست دوباره ارسال شود؟')">تلاش مجدد</button>
             </form>
           </td>
         </tr>

@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { isEdge, isMaster } from '../../config/role';
 import { OutboxService } from '../sync/outbox.service';
 import { WebhookService } from './webhook.service';
+import { KavenegarService } from './kavenegar.service';
 import { CreateFormDto, UpdateFormDto } from './dto/form.dto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class FormEngineService {
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
     private readonly webhook: WebhookService,
+    private readonly kavenegar: KavenegarService,
   ) {}
 
   list() {
@@ -44,6 +46,9 @@ export class FormEngineService {
         webhookUrl: dto.webhookUrl || null,
         googleSheetUrl: dto.googleSheetUrl || null,
         googleSheetMeta: dto.googleSheetMeta ? (dto.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+        otpEnabled: dto.otpEnabled || false,
+        otpField: dto.otpField || 'mobile',
+        otpTemplate: dto.otpTemplate || 'verify',
       },
     });
     // تعریف فرم رو برای Edgeها می‌فرستیم
@@ -66,6 +71,9 @@ export class FormEngineService {
         ...(dto.webhookUrl !== undefined ? { webhookUrl: dto.webhookUrl || null } : {}),
         ...(dto.googleSheetUrl !== undefined ? { googleSheetUrl: dto.googleSheetUrl || null } : {}),
         ...(dto.googleSheetMeta !== undefined ? { googleSheetMeta: dto.googleSheetMeta ? (dto.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull } : {}),
+        ...(dto.otpEnabled !== undefined ? { otpEnabled: dto.otpEnabled } : {}),
+        ...(dto.otpField !== undefined ? { otpField: dto.otpField || 'mobile' } : {}),
+        ...(dto.otpTemplate !== undefined ? { otpTemplate: dto.otpTemplate || 'verify' } : {}),
       },
     });
     if (isMaster()) {
@@ -87,7 +95,43 @@ export class FormEngineService {
     return { deleted: true };
   }
 
-  async submit(key: string, payload: Record<string, unknown>) {
+  // کدهای موقت OTP در حافظه (با منقضی شدن بعد از ۲ دقیقه)
+  private otpStore = new Map<string, { code: string; expiresAt: number }>();
+
+  async requestOtp(key: string, mobile: string) {
+    const form = await this.getByKey(key);
+    if (!form.otpEnabled) {
+      throw new BadRequestException('OTP is not enabled for this form');
+    }
+
+    const template = form.otpTemplate || 'verify';
+    // تولید کد ۴ یا ۵ رقمی تصادفی
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = Date.now() + 2 * 60 * 1000;
+
+    const cacheKey = `${key}:${mobile.trim()}`;
+    this.otpStore.set(cacheKey, { code, expiresAt });
+
+    const sent = await this.kavenegar.sendLookupOtp(mobile, code, template);
+    return { ok: true, sent };
+  }
+
+  async verifyOtp(key: string, mobile: string, code: string): Promise<boolean> {
+    const cacheKey = `${key}:${mobile.trim()}`;
+    const entry = this.otpStore.get(cacheKey);
+    if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.otpStore.delete(cacheKey);
+      return false;
+    }
+    const isValid = entry.code === code.trim();
+    if (isValid) {
+      this.otpStore.delete(cacheKey);
+    }
+    return isValid;
+  }
+
+  async submit(key: string, payload: Record<string, unknown>, otpCode?: string) {
     const form = await this.getByKey(key);
     const fields = Array.isArray(form.body)
       ? (form.body as Array<Record<string, unknown>>)
@@ -100,6 +144,19 @@ export class FormEngineService {
       }
     }
 
+    let otpStatus: string | null = null;
+    if (form.otpEnabled) {
+      const otpField = form.otpField || 'mobile';
+      const mobileVal = String(payload[otpField] || '');
+      if (mobileVal && otpCode) {
+        const isVerified = await this.verifyOtp(key, mobileVal, otpCode);
+        otpStatus = isVerified ? 'VERIFIED' : 'UNVERIFIED';
+      } else {
+        // حتی اگر کاربر کد را وارد نکرده باشد یا اشتباه باشد، ثبت می‌کنیم ولی UNVERIFIED می‌زنیم
+        otpStatus = 'UNVERIFIED';
+      }
+    }
+
     // اول روی همین گره ذخیره می‌شه (Edge برای سرعت/در دسترس بودن)
     const edgeNodeId = process.env.EDGE_NODE_ID;
     
@@ -108,6 +165,7 @@ export class FormEngineService {
         formId: form.id,
         edgeNodeId: edgeNodeId || null,
         payload: payload as Prisma.InputJsonValue,
+        otpStatus,
       },
     });
 
@@ -118,7 +176,7 @@ export class FormEngineService {
         submissionId: submission.id,
         formKey: form.key,
         edgeNodeId,
-        payload,
+        payload: { ...payload, __otpStatus: otpStatus },
         createdAt: submission.createdAt.toISOString(),
       });
     } else {
@@ -143,7 +201,7 @@ export class FormEngineService {
     });
   }
 
-  listSubmissions(formId?: string, fromDate?: Date, toDate?: Date) {
+  listSubmissions(formId?: string, fromDate?: Date, toDate?: Date, otpFilter?: string) {
     const where: Prisma.FormSubmissionWhereInput = {};
     if (formId) where.formId = formId;
     
@@ -151,6 +209,12 @@ export class FormEngineService {
       where.createdAt = {};
       if (fromDate) where.createdAt.gte = fromDate;
       if (toDate) where.createdAt.lte = toDate;
+    }
+
+    if (otpFilter === 'VERIFIED') {
+      where.otpStatus = 'VERIFIED';
+    } else if (otpFilter === 'UNVERIFIED') {
+      where.otpStatus = 'UNVERIFIED';
     }
 
     return this.prisma.formSubmission.findMany({
@@ -177,6 +241,9 @@ export class FormEngineService {
     webhookUrl?: string | null;
     googleSheetUrl?: string | null;
     googleSheetMeta?: unknown;
+    otpEnabled?: boolean;
+    otpField?: string | null;
+    otpTemplate?: string | null;
     updatedAt: Date;
   }) {
     await this.outbox.enqueueFormSync({
@@ -192,6 +259,9 @@ export class FormEngineService {
         webhookUrl: form.webhookUrl,
         googleSheetUrl: form.googleSheetUrl,
         googleSheetMeta: form.googleSheetMeta,
+        otpEnabled: form.otpEnabled,
+        otpField: form.otpField,
+        otpTemplate: form.otpTemplate,
       },
     });
   }

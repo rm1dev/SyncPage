@@ -60,17 +60,23 @@ export class SyncHttpController {
       );
     }
 
+    const payloadData = { ...(payload.payload || {}) };
+    const otpStatus = payloadData.__otpStatus ? String(payloadData.__otpStatus) : null;
+    delete payloadData.__otpStatus;
+
     await this.prisma.formSubmission.upsert({
       where: { id: payload.submissionId },
       create: {
         id: payload.submissionId,
         formId: form.id,
         edgeNodeId: payload.edgeNodeId || null,
-        payload: (payload.payload ?? {}) as Prisma.InputJsonValue,
+        payload: payloadData as Prisma.InputJsonValue,
+        otpStatus,
         createdAt: new Date(payload.createdAt),
       },
       update: {
         edgeNodeId: payload.edgeNodeId || null,
+        otpStatus,
       },
     });
 

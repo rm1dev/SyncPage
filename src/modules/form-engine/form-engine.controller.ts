@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -23,7 +24,19 @@ export class FormEngineController {
     @Param('key') key: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.forms.submit(key, body);
+    const otpCode = body.__otpCode ? String(body.__otpCode) : undefined;
+    const payload = { ...body };
+    delete payload.__otpCode;
+    return this.forms.submit(key, payload, otpCode);
+  }
+
+  @Post(':key/otp')
+  requestOtp(
+    @Param('key') key: string,
+    @Body('mobile') mobile: string,
+  ) {
+    if (!mobile) throw new BadRequestException('Mobile is required');
+    return this.forms.requestOtp(key, mobile);
   }
 
   @Get()

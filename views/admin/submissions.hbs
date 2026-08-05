@@ -32,6 +32,15 @@
       <input type="text" name="endDate" id="endDate" placeholder="1403/12/29" value="{{endDate}}" class="form-control" style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); padding: 0.6rem; border-radius: 6px; width: 100%; height: 38px;" />
     </div>
 
+    <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+      <label for="otpFilter">احرازهویت پیامکی:</label>
+      <select name="otpFilter" id="otpFilter" class="form-control" style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); padding: 0.6rem; border-radius: 6px; width: 100%; height: 38px;">
+        <option value="">همه لیدها</option>
+        <option value="VERIFIED" {{#if (eq otpFilter 'VERIFIED')}}selected{{/if}}>فقط تایید شده‌ها</option>
+        <option value="UNVERIFIED" {{#if (eq otpFilter 'UNVERIFIED')}}selected{{/if}}>فقط تایید نشده‌ها</option>
+      </select>
+    </div>
+
     <button type="submit" class="btn btn-primary" style="height: 38px;">
       <span>فیلتر و گزارش</span>
     </button>
@@ -49,6 +58,7 @@
         <tr>
           <th>نام فرم</th>
           <th>نود مبدا</th>
+          <th>وضعیت احراز هویت</th>
           <th>تاریخ ثبت (جلالی)</th>
           <th>اطلاعات ورودی (Payload)</th>
         </tr>
@@ -58,6 +68,15 @@
         <tr>
           <td style="font-weight: 600;">{{formTitle}}</td>
           <td><span class="status-pill" style="background: rgba(255,255,255,0.06); color: var(--text-main);">{{nodeTitle}}</span></td>
+          <td>
+            {{#if isVerified}}
+              <span class="status-pill status-ok" style="font-size: 0.8rem;">تایید شده</span>
+            {{else if isUnverified}}
+              <span class="status-pill status-err" style="font-size: 0.8rem; background: rgba(239, 68, 68, 0.2); color: #f87171;">احراز نشده</span>
+            {{else}}
+              <span style="color: var(--text-muted); font-size: 0.8rem;">بدون OTP</span>
+            {{/if}}
+          </td>
           <td style="white-space: nowrap;">{{jalaliDate}}</td>
           <td>
             <pre style="margin: 0; padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 0.85rem; max-width: 500px; overflow-x: auto;">{{payloadStr}}</pre>

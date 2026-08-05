@@ -109,6 +109,9 @@ export class SyncConsumerController {
             webhookUrl: payload.form.webhookUrl || null,
             googleSheetUrl: payload.form.googleSheetUrl || null,
             googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            otpEnabled: payload.form.otpEnabled || false,
+            otpField: payload.form.otpField || 'mobile',
+            otpTemplate: payload.form.otpTemplate || 'verify',
           },
           update: {
             title: payload.form.title,
@@ -117,6 +120,9 @@ export class SyncConsumerController {
             webhookUrl: payload.form.webhookUrl || null,
             googleSheetUrl: payload.form.googleSheetUrl || null,
             googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            otpEnabled: payload.form.otpEnabled || false,
+            otpField: payload.form.otpField || 'mobile',
+            otpTemplate: payload.form.otpTemplate || 'verify',
           },
         });
       }
@@ -139,7 +145,7 @@ export class SyncConsumerController {
   ) {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
-    const payload = this.unwrap<FormSubmissionSyncPayload>(raw);
+    const payloadRaw = this.unwrap<FormSubmissionSyncPayload>(raw);
 
     try {
       if (!isMaster()) {
@@ -149,51 +155,57 @@ export class SyncConsumerController {
       }
 
       if (
-        !payload?.idempotencyKey ||
-        !payload.submissionId ||
-        !payload.formKey
+        !payloadRaw?.idempotencyKey ||
+        !payloadRaw.submissionId ||
+        !payloadRaw.formKey
       ) {
         this.logger.error('Invalid form.submission.sync payload');
         channel.ack(originalMsg);
         return;
       }
 
-      if (await this.landingApply.alreadyProcessed(payload.idempotencyKey)) {
+      if (await this.landingApply.alreadyProcessed(payloadRaw.idempotencyKey)) {
         channel.ack(originalMsg);
         return;
       }
 
       const form = await this.prisma.form.findUnique({
-        where: { key: payload.formKey },
+        where: { key: payloadRaw.formKey },
       });
       if (!form) {
-        throw new Error(`Form not found on master: ${payload.formKey}`);
+        throw new Error(`Form not found on master: ${payloadRaw.formKey}`);
       }
 
+      const payload = { ...payloadRaw.payload };
+      const otpStatus = payload.__otpStatus ? String(payload.__otpStatus) : null;
+      delete payload.__otpStatus;
+
       await this.prisma.formSubmission.upsert({
-        where: { id: payload.submissionId },
+        where: { id: payloadRaw.submissionId },
         create: {
-          id: payload.submissionId,
+          id: payloadRaw.submissionId,
           formId: form.id,
-          edgeNodeId: payload.edgeNodeId || null,
-          payload: payload.payload as Prisma.InputJsonValue,
-          createdAt: new Date(payload.createdAt),
+          edgeNodeId: payloadRaw.edgeNodeId || null,
+          payload: payload as Prisma.InputJsonValue,
+          otpStatus,
+          createdAt: new Date(payloadRaw.createdAt),
         },
         update: {
-          edgeNodeId: payload.edgeNodeId || null,
+          edgeNodeId: payloadRaw.edgeNodeId || null,
+          otpStatus,
         },
       });
 
-      await this.landingApply.markProcessed(payload.idempotencyKey);
+      await this.landingApply.markProcessed(payloadRaw.idempotencyKey);
       this.logger.log(
-        `Form submission synced on master: ${payload.submissionId}`,
+        `Form submission synced on master: ${payloadRaw.submissionId}`,
       );
 
       // اجرای وب‌هوک و اتصال گوگل‌شیت به صورت متمرکز روی مستر
       await this.webhook.dispatch(form, {
-        id: payload.submissionId,
-        payload: payload.payload as Record<string, unknown>,
-        createdAt: new Date(payload.createdAt),
+        id: payloadRaw.submissionId,
+        payload: payload as Record<string, unknown>,
+        createdAt: new Date(payloadRaw.createdAt),
       });
 
       channel.ack(originalMsg);
