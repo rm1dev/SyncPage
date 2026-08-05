@@ -1,6 +1,6 @@
 <header class="page-header">
   <div class="page-header-title">
-    <h1>{{#if form}}ویرایش فرم: {{form.title}}{{else}}ایجاد فرم جدید{{/if}}</h1>
+    <h1>{{#if form.id}}ویرایش فرم: {{form.title}}{{else}}ایجاد فرم جدید{{/if}}</h1>
     <span class="subtitle">تنظیمات متاداده و ساختار فیلدهای فرم به صورت JSON</span>
   </div>
   <a href="/spadmin" class="btn btn-secondary">
@@ -16,7 +16,7 @@
   </div>
 {{/if}}
 
-<form method="post" action="{{#if form}}/spadmin/forms/{{form.id}}{{else}}/spadmin/forms{{/if}}" class="content-wrapper">
+<form method="post" action="{{#if form.id}}/spadmin/forms/{{form.id}}{{else}}/spadmin/forms{{/if}}" class="content-wrapper">
   <div class="section-header">
     <span>۱. تنظیمات عمومی فرم</span>
   </div>
@@ -29,7 +29,7 @@
 
     <div class="form-group text-left">
       <label class="form-label" for="key">کلید یکتا (برای فراخوانی API)</label>
-      <input class="form-control" id="key" name="key" placeholder="مثلاً: user_signup_form" required value="{{form.key}}" {{#if form}}readonly style="opacity: 0.7;"{{/if}} />
+      <input class="form-control" id="key" name="key" dir="ltr" placeholder="مثلاً: user_signup_form" required value="{{form.key}}" {{#if form.id}}readonly style="opacity: 0.7;"{{/if}} />
     </div>
   </div>
 
