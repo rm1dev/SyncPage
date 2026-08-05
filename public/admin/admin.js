@@ -247,7 +247,11 @@ function buildLandingFormHtml(formId, fields) {
  * @param {string} formKey
  */
 function buildLandingFormScript(formId, formKey) {
-  return `<script>
+  const otpEnabled = /** @type {HTMLInputElement} */ (document.getElementById('otpEnabled'))?.checked;
+  const otpField = /** @type {HTMLInputElement} */ (document.getElementById('otpField'))?.value || 'mobile';
+
+  if (!otpEnabled) {
+    return `<script>
 (function () {
   var form = document.getElementById(${JSON.stringify(formId)});
   if (!form) return;
@@ -258,6 +262,80 @@ function buildLandingFormScript(formId, formKey) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function () { return {}; });
+      alert(err.message || 'خطا در ثبت فرم');
+      return;
+    }
+    alert('فرم با موفقیت ثبت شد');
+    form.reset();
+  });
+})();
+</script>`;
+  }
+
+  // اسکریپت با پشتیبانی از OTP
+  return `<script>
+(function () {
+  var form = document.getElementById(${JSON.stringify(formId)});
+  if (!form) return;
+  
+  // متغیر برای ذخیره موقت کد تایید
+  var pendingOtpData = null;
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var data = Object.fromEntries(new FormData(form).entries());
+    
+    // اگر قبلا کد گرفته‌ایم، حالا سابمیت نهایی انجام بدهیم
+    if (pendingOtpData) {
+      var code = prompt("لطفا کد تایید پیامک شده را وارد کنید:");
+      if (code) {
+        data.__otpCode = code;
+      }
+      
+      var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function () { return {}; });
+        alert(err.message || 'خطا در ثبت نهایی فرم');
+        return;
+      }
+      alert('فرم با موفقیت ثبت شد');
+      form.reset();
+      pendingOtpData = null;
+      return;
+    }
+
+    // مرحله اول: درخواست کد تایید
+    var mobile = data[${JSON.stringify(otpField)}];
+    if (!mobile) {
+      alert('لطفا فیلد شماره موبایل را پر کنید');
+      return;
+    }
+
+    var otpRes = await fetch(${JSON.stringify('/api/forms/' + formKey + '/otp')}, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile: mobile }),
+    });
+    
+    if (!otpRes.ok) {
+      var err = await otpRes.json().catch(function () { return {}; });
+      alert(err.message || 'خطا در ارسال پیامک');
+      return;
+    }
+    
+    alert('کد تایید ارسال شد. لطفاً فرم را دوباره سابمیت کنید تا کد پرسیده شود.');
+    pendingOtpData = data;
+  });
+})();
+</script>`;
+}
     });
     if (!res.ok) {
       var err = await res.json().catch(function () { return {}; });

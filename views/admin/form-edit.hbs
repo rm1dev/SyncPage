@@ -74,14 +74,14 @@
 
   <div class="form-group text-left" style="display: flex; align-items: center; gap: 0.5rem; flex-direction: row-reverse; justify-content: flex-end;">
     <label class="form-label" for="otpEnabled" style="margin: 0; cursor: pointer;">فعال‌سازی ارسال پیامک OTP</label>
-    <input type="checkbox" id="otpEnabled" name="otpEnabled" {{#if form.otpEnabled}}checked{{/if}} style="width: 18px; height: 18px; cursor: pointer;" onchange="document.getElementById('otp-settings').style.display = this.checked ? 'block' : 'none';" />
+    <input type="checkbox" id="otpEnabled" name="otpEnabled" {{#if form.otpEnabled}}checked{{/if}} style="width: 18px; height: 18px; cursor: pointer;" onchange="document.getElementById('otp-settings').style.display = this.checked ? 'block' : 'none'; refreshLandingSnippets();" />
   </div>
 
   <div id="otp-settings" style="display: {{#if form.otpEnabled}}block{{else}}none{{/if}}; border-right: 2px solid var(--color-primary); padding-right: 1rem; margin-bottom: 1rem;">
     <div class="grid-2">
       <div class="form-group text-left">
         <label class="form-label" for="otpField">نام فیلد موبایل (جهت دریافت کد)</label>
-        <input class="form-control" id="otpField" name="otpField" placeholder="mobile" value="{{form.otpField}}" />
+        <input class="form-control" id="otpField" name="otpField" placeholder="mobile" value="{{form.otpField}}" onchange="refreshLandingSnippets()" />
         <small style="color: var(--text-muted);">نام فیلدی که شماره تماس کاربر در آن قرار دارد.</small>
       </div>
 
@@ -95,11 +95,9 @@
     <div class="alert alert-ok" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--text-main); align-items: flex-start; margin-top: 0.5rem;">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" style="margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <div>
-        <strong style="display: block; margin-bottom: 0.35rem; color: #818cf8;">راهنمای برنامه‌نویس برای پیاده‌سازی OTP:</strong>
+        <strong style="display: block; margin-bottom: 0.35rem; color: #818cf8;">نحوه استفاده از OTP:</strong>
         <p style="font-size: 0.85rem; margin: 0; line-height: 1.6;">
-          ۱. ابتدا برای درخواست کد تایید، متد <code>POST /api/forms/&lt;key&gt;/otp</code> را با بدنه <code>{"mobile": "09..."}</code> صدا بزنید.<br>
-          ۲. پس از دریافت کد توسط کاربر، در فرم ثبت نهایی خود علاوه بر دیتای فیلدها، فیلد <code>__otpCode</code> را هم با کدی که کاربر وارد کرده، به آدرس <code>/api/forms/&lt;key&gt;/submit</code> پست کنید.<br>
-          * نکته: حتی در صورت وارد نکردن کد یا اشتباه بودن آن، فرم ثبت شده ولی با وضعیت <strong>UNVERIFIED</strong> ذخیره می‌شود.
+          کافیست تنظیمات بالا را اعمال کنید. <strong>سیستم به صورت خودکار در بخش «کد آماده اسکریپت لندینگ» (پایین همین صفحه)</strong> کدهای لازم برای دریافت پیامک و نمایش پاپ‌آپ گرفتن کد تایید (<code>prompt</code>) را تولید می‌کند که می‌توانید به راحتی داخل لندینگ خود کپی کنید.
         </p>
       </div>
     </div>
