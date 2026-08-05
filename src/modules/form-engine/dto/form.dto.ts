@@ -38,6 +38,9 @@ export class CreateFormDto {
   @IsOptional()
   @IsString()
   otpTemplate?: string | null;
+  @IsOptional()
+  @IsString()
+  profileId?: string | null;
 }
 
 export class UpdateFormDto {
@@ -77,6 +80,9 @@ export class UpdateFormDto {
   @IsOptional()
   @IsString()
   otpTemplate?: string | null;
+  @IsOptional()
+  @IsString()
+  profileId?: string | null;
 }
 
 export class SubmitFormDto {

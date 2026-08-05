@@ -1,0 +1,90 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle Sidebar">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <h1>مدیریت پروفایل‌ها</h1>
+    </div>
+    <span class="subtitle">تنظیمات اتصال فرم‌ها به وب‌هوک و گوگل شیت برای استفاده مجدد</span>
+  </div>
+  <a href="/spadmin/profiles/new" class="btn btn-primary">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span>افزودن پروفایل</span>
+  </a>
+</header>
+
+{{#if flash}}
+  <div class="alert alert-ok">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <span>{{flash}}</span>
+  </div>
+{{/if}}
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+
+<div class="content-wrapper">
+  <div class="section-header">
+    <span>پروفایل‌های تعریف شده</span>
+    <span class="status-pill">{{profiles.length}} پروفایل</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>نام پروفایل</th>
+          <th>آدرس وب‌هوک</th>
+          <th>آدرس گوگل شیت</th>
+          <th>فرم‌های متصل</th>
+          <th class="actions">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each profiles}}
+        <tr>
+          <td style="font-weight: 600;">{{name}}</td>
+          <td>
+            {{#if webhookUrl}}
+              <span class="status-pill status-ok">متصل</span>
+            {{else}}
+              <span class="status-pill">—</span>
+            {{/if}}
+          </td>
+          <td>
+            {{#if googleSheetUrl}}
+              <span class="status-pill status-ok">متصل</span>
+            {{else}}
+              <span class="status-pill">—</span>
+            {{/if}}
+          </td>
+          <td>
+            <span class="status-pill">{{_count.forms}}</span>
+          </td>
+          <td class="actions">
+            <a href="/spadmin/profiles/{{id}}" class="btn-subtle">
+              <span>ویرایش</span>
+            </a>
+            {{#if (eq _count.forms 0)}}
+              <form method="post" action="/spadmin/profiles/{{id}}/delete" style="display:inline;" onsubmit="return confirm('آیا از حذف این پروفایل اطمینان دارید؟');">
+                <button type="submit" class="btn-subtle" style="color: var(--color-danger); margin-right: 0.5rem;">حذف</button>
+              </form>
+            {{else}}
+              <button class="btn-subtle" disabled style="opacity: 0.5; margin-right: 0.5rem; cursor: not-allowed;" title="ابتدا فرم‌های متصل را ویرایش کنید">حذف</button>
+            {{/if}}
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+            هیچ پروفایلی ثبت نشده است. با «افزودن پروفایل» شروع کنید.
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>

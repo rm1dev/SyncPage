@@ -42,31 +42,85 @@
     <span>۲. اتصال به وب‌هوک و گوگل شیت (اختیاری)</span>
   </div>
 
-  <div class="form-group text-left">
-    <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
-    <input class="form-control" id="webhookUrl" name="webhookUrl" placeholder="http://bc.teleskp.ir/gateways/store?email=$email$&body=$text$" value="{{form.webhookUrl}}" />
-    <small style="color: var(--text-muted);">
-      می‌توانید برای جایگذاری داینامیک مقادیر در کوئری‌استرینگ، از نام فیلد داخل <code>$نام‌فیلد$</code> استفاده کنید (مثلا <code>$mobile$</code>). در صورت وجود، جایگزین شده و درخواست با بدنه کامل JSON پست می‌شود.
+  <div class="form-group text-left" style="margin-bottom: 1.5rem; background: rgba(0,0,0,0.03); padding: 1rem; border-radius: 8px;">
+    <label class="form-label" for="profileId">استفاده از پروفایل اتصال از پیش تعریف شده</label>
+    <select class="form-control" id="profileId" name="profileId" style="max-width: 400px;" onchange="handleProfileChange(this)">
+      <option value="">بدون پروفایل (تنظیمات دستی پایین)</option>
+      {{#each profiles}}
+        <option value="{{id}}" 
+          data-webhook="{{webhookUrl}}" 
+          data-sheet="{{googleSheetUrl}}" 
+          data-meta="{{#if googleSheetMeta}}{{json googleSheetMeta}}{{/if}}"
+          {{#if (eq id ../form.profileId)}}selected{{/if}}
+        >{{name}}</option>
+      {{/each}}
+    </select>
+    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+      در صورت انتخاب پروفایل، مقادیر زیر بر اساس آن به صورت خودکار پُر خواهند شد و هر تغییری در پروفایل، باعث تغییر در تمامی فرم‌های متصل می‌شود.
+      برای ساخت پروفایل جدید به بخش <a href="/spadmin/profiles" style="color: var(--color-primary);">مدیریت پروفایل‌ها</a> مراجعه کنید.
     </small>
   </div>
 
-  <div class="grid-2">
+  <div id="integration-fields">
     <div class="form-group text-left">
-      <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
-      <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" placeholder="https://script.google.com/macros/s/.../exec" value="{{form.googleSheetUrl}}" />
+      <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
+      <input class="form-control" id="webhookUrl" name="webhookUrl" placeholder="http://bc.teleskp.ir/gateways/store?email=$email$&body=$text$" value="{{form.webhookUrl}}" />
+      <small style="color: var(--text-muted);">
+        می‌توانید برای جایگذاری داینامیک مقادیر در کوئری‌استرینگ، از نام فیلد داخل <code>$نام‌فیلد$</code> استفاده کنید (مثلا <code>$mobile$</code>). در صورت وجود، جایگزین شده و درخواست با بدنه کامل JSON پست می‌شود.
+      </small>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group text-left">
+        <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
+        <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" placeholder="https://script.google.com/macros/s/.../exec" value="{{form.googleSheetUrl}}" />
+      </div>
+
+      <div class="form-group text-left">
+        <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
+        <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
+      </div>
     </div>
 
     <div class="form-group text-left">
-      <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
-      <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
+      <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
+      <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
+      <small style="color: var(--text-muted);">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
     </div>
   </div>
 
-  <div class="form-group text-left">
-    <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
-    <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
-    <small style="color: var(--text-muted);">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
-  </div>
+  <script>
+    function handleProfileChange(select) {
+      const integrationFields = document.getElementById('integration-fields');
+      if (select.value) {
+        integrationFields.style.opacity = '0.5';
+        integrationFields.style.pointerEvents = 'none';
+        
+        const option = select.options[select.selectedIndex];
+        document.getElementById('webhookUrl').value = option.getAttribute('data-webhook') || '';
+        document.getElementById('googleSheetUrl').value = option.getAttribute('data-sheet') || '';
+        
+        const metaStr = option.getAttribute('data-meta');
+        if (metaStr) {
+          try {
+            const meta = JSON.parse(metaStr);
+            document.getElementById('startRow').value = meta.startRow || 2;
+            if (meta.columns) {
+              document.getElementById('columnMapping').value = JSON.stringify(meta.columns, null, 2);
+            }
+          } catch(e) {}
+        }
+      } else {
+        integrationFields.style.opacity = '1';
+        integrationFields.style.pointerEvents = 'auto';
+      }
+    }
+    // اجرا در هنگام لود برای حالت اولیه
+    window.addEventListener('DOMContentLoaded', () => {
+      const select = document.getElementById('profileId');
+      if (select && select.value) handleProfileChange(select);
+    });
+  </script>
 
   <div class="section-header mt-2">
     <span>۳. اعتبارسنجی پیامکی (OTP) با کاوه‌نگار</span>

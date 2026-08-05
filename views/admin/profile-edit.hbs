@@ -1,0 +1,76 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <h1>{{#if profile.id}}ویرایش پروفایل: {{profile.name}}{{else}}ایجاد پروفایل جدید{{/if}}</h1>
+    <span class="subtitle">تنظیمات اتصال وب‌هوک و گوگل شیت برای اشتراک‌گذاری بین فرم‌ها</span>
+  </div>
+  <a href="/spadmin/profiles" class="btn btn-secondary">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <span>بازگشت به لیست پروفایل‌ها</span>
+  </a>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+
+<form method="post" action="{{#if profile.id}}/spadmin/profiles/{{profile.id}}{{else}}/spadmin/profiles{{/if}}" class="content-wrapper">
+  <div class="section-header">
+    <span>۱. اطلاعات عمومی پروفایل</span>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="name">نام پروفایل</label>
+    <input class="form-control" id="name" name="name" placeholder="مثلاً: اتصال به شیت فروش و CRM" required value="{{profile.name}}" />
+    <small style="color: var(--text-muted);">یک نام مشخص برای شناسایی ساده‌تر در فرم‌ها انتخاب کنید.</small>
+  </div>
+
+  <div class="section-header mt-2">
+    <span>۲. تنظیمات وب‌هوک و گوگل شیت</span>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
+    <input class="form-control" id="webhookUrl" name="webhookUrl" placeholder="http://bc.teleskp.ir/gateways/store?email=$email$&body=$text$" value="{{profile.webhookUrl}}" />
+    <small style="color: var(--text-muted);">
+      می‌توانید برای جایگذاری داینامیک مقادیر در کوئری‌استرینگ، از نام فیلد داخل <code>$نام‌فیلد$</code> استفاده کنید (مثلا <code>$mobile$</code>).
+    </small>
+  </div>
+
+  <div class="grid-2">
+    <div class="form-group text-left">
+      <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
+      <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" placeholder="https://script.google.com/macros/s/.../exec" value="{{profile.googleSheetUrl}}" />
+    </div>
+
+    <div class="form-group text-left">
+      <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
+      <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
+    </div>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
+    <textarea class="form-control" id="columnMapping" name="columnMapping" rows="4" placeholder='{"fullName": "A", "mobile": "B"}'>{{columnMappingJson}}</textarea>
+    <small style="color: var(--text-muted);">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
+  </div>
+
+  {{#if profile.id}}
+    <div class="alert alert-ok" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--text-main); margin-top: 1rem;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <div>
+        <strong>توجه:</strong> با ذخیره تغییرات این پروفایل، تمامی فرم‌هایی که به آن متصل هستند به صورت خودکار به‌روزرسانی شده و در صف همگام‌سازی نودهای Edge قرار می‌گیرند.
+      </div>
+    </div>
+  {{/if}}
+
+  <div class="text-left mt-2" style="display: flex; gap: 1rem;">
+    <button type="submit" class="btn btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span>ذخیره پروفایل</span>
+    </button>
+    <a href="/spadmin/profiles" class="btn btn-secondary">انصراف</a>
+  </div>
+</form>

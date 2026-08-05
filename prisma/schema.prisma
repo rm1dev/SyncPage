@@ -20,12 +20,27 @@ enum OutboxStatus {
   FAILED
 }
 
+model IntegrationProfile {
+  id              String   @id @default(uuid())
+  name            String
+  webhookUrl      String?
+  googleSheetUrl  String?
+  googleSheetMeta Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  forms           Form[]
+}
+
 model Form {
   id              String           @id @default(uuid())
   title           String
   key             String           @unique
   slug            String           @unique
   body            Json
+  
+  profileId       String?
+  profile         IntegrationProfile? @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
   webhookUrl      String?
   googleSheetUrl  String?
   googleSheetMeta Json?            // { "startRow": 2, "columns": { "fullName": "A", "email": "B" } }

@@ -30,6 +30,8 @@ import 'jdate.js';
 import { WebhookService } from '../form-engine/webhook.service';
 import { KavenegarService } from '../form-engine/kavenegar.service';
 
+import { IntegrationProfileService } from '../form-engine/integration-profile.service';
+
 @Controller('spadmin')
 export class AdminController {
   constructor(
@@ -39,6 +41,7 @@ export class AdminController {
     private readonly versions: VersionService,
     private readonly webhook: WebhookService,
     private readonly kavenegar: KavenegarService,
+    private readonly profiles: IntegrationProfileService,
   ) {}
 
   @Get('login')
@@ -109,14 +112,102 @@ export class AdminController {
     };
   }
 
+  @Get('profiles')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/profiles')
+  async profilesPage(@Query('flash') flash?: string, @Query('error') error?: string) {
+    const profiles = await this.profiles.list();
+    return { layout: 'main', title: 'مدیریت پروفایل‌ها', active: 'profiles', flash, error, profiles };
+  }
+
+  @Get('profiles/new')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/profile-edit')
+  newProfile() {
+    return { layout: 'main', title: 'افزودن پروفایل', active: 'profiles', profile: {}, startRow: 2 };
+  }
+
+  @Post('profiles')
+  @UseGuards(AdminTokenGuard)
+  async createProfile(@Body() body: Record<string, string>, @Res() res: Response) {
+    try {
+      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      await this.profiles.create({
+        name: body.name,
+        webhookUrl: body.webhookUrl || null,
+        googleSheetUrl: body.googleSheetUrl || null,
+        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : null,
+      });
+      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل ساخته شد'));
+    } catch (err) {
+      return res.status(400).render('admin/profile-edit', {
+        layout: 'main', title: 'افزودن پروفایل', active: 'profiles',
+        error: err instanceof Error ? err.message : 'Create failed',
+        profile: body,
+        columnMappingJson: body.columnMapping,
+        startRow: body.startRow,
+      });
+    }
+  }
+
+  @Get('profiles/:id')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/profile-edit')
+  async editProfile(@Param('id') id: string) {
+    const profile = await this.profiles.getById(id);
+    const meta: any = profile.googleSheetMeta || {};
+    return {
+      layout: 'main', title: 'ویرایش پروفایل', active: 'profiles',
+      profile,
+      columnMappingJson: meta.columns ? JSON.stringify(meta.columns, null, 2) : '',
+      startRow: meta.startRow || 2,
+    };
+  }
+
+  @Post('profiles/:id')
+  @UseGuards(AdminTokenGuard)
+  async updateProfile(@Param('id') id: string, @Body() body: Record<string, string>, @Res() res: Response) {
+    try {
+      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      await this.profiles.update(id, {
+        name: body.name,
+        webhookUrl: body.webhookUrl || null,
+        googleSheetUrl: body.googleSheetUrl || null,
+        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : null,
+      });
+      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل به‌روز شد و تمامی فرم‌های متصل ویرایش شدند.'));
+    } catch (err) {
+      return res.status(400).render('admin/profile-edit', {
+        layout: 'main', title: 'ویرایش پروفایل', active: 'profiles',
+        error: err instanceof Error ? err.message : 'Update failed',
+        profile: body,
+        columnMappingJson: body.columnMapping,
+        startRow: body.startRow,
+      });
+    }
+  }
+
+  @Post('profiles/:id/delete')
+  @UseGuards(AdminTokenGuard)
+  async deleteProfile(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.profiles.remove(id);
+      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل حذف شد'));
+    } catch (err) {
+      return res.redirect('/spadmin/profiles?error=' + encodeURIComponent(err instanceof Error ? err.message : 'Delete failed'));
+    }
+  }
+
   @Get('forms/new')
   @UseGuards(AdminTokenGuard)
   @Render('admin/form-edit')
-  newForm() {
+  async newForm() {
+    const profiles = await this.profiles.list();
     return {
       layout: 'main',
       title: 'فرم جدید',
       active: 'forms',
+      profiles,
       bodyJson: JSON.stringify(
         [
           {
@@ -150,12 +241,14 @@ export class AdminController {
   @Render('admin/form-edit')
   async editForm(@Param('id') id: string) {
     const form = await this.forms.getById(id);
+    const profiles = await this.profiles.list();
     const meta: any = form.googleSheetMeta || {};
     return {
       layout: 'main',
       title: 'ویرایش فرم',
       active: 'forms',
       form,
+      profiles,
       bodyJson: JSON.stringify(form.body, null, 2),
       columnMappingJson: meta.columns ? JSON.stringify(meta.columns, null, 2) : '',
       startRow: meta.startRow || 2,
@@ -182,6 +275,7 @@ export class AdminController {
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
+        profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
     } catch (err) {
@@ -225,6 +319,7 @@ export class AdminController {
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
+        profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
     } catch (err) {

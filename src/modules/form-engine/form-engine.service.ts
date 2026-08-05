@@ -49,6 +49,7 @@ export class FormEngineService {
         otpEnabled: dto.otpEnabled || false,
         otpField: dto.otpField || 'mobile',
         otpTemplate: dto.otpTemplate || 'verify',
+        profileId: dto.profileId || null,
       },
     });
     // تعریف فرم رو برای Edgeها می‌فرستیم
@@ -74,6 +75,7 @@ export class FormEngineService {
         ...(dto.otpEnabled !== undefined ? { otpEnabled: dto.otpEnabled } : {}),
         ...(dto.otpField !== undefined ? { otpField: dto.otpField || 'mobile' } : {}),
         ...(dto.otpTemplate !== undefined ? { otpTemplate: dto.otpTemplate || 'verify' } : {}),
+        ...(dto.profileId !== undefined ? { profileId: dto.profileId || null } : {}),
       },
     });
     if (isMaster()) {
