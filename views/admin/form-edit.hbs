@@ -82,10 +82,10 @@
       </div>
     </div>
 
-    <div class="form-group text-left">
+    <div class="form-group text-left" dir="ltr">
       <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
-      <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
-      <small style="color: var(--text-muted);">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
+      <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" dir="ltr" style="font-family: monospace;" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
+      <small style="color: var(--text-muted); direction: rtl; display: block;">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
     </div>
   </div>
 
@@ -168,8 +168,8 @@
     آرایه‌ای از اشیاء فیلد شامل <code>type</code>، <code>name</code>، <code>label</code>، <code>required</code> و <code>options</code>
   </p>
 
-  <div class="form-group text-left">
-    <textarea class="form-control" id="body" name="body" rows="14" required>{{bodyJson}}</textarea>
+  <div class="form-group text-left" dir="ltr" style="position: relative;">
+    <textarea class="form-control" id="body" name="body" rows="14" required dir="ltr" style="font-family: monospace;">{{bodyJson}}</textarea>
   </div>
 
   <div class="text-left mt-2" style="display: flex; gap: 1rem;">
