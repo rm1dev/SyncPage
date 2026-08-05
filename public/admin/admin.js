@@ -336,18 +336,6 @@ function buildLandingFormScript(formId, formKey) {
 })();
 </script>`;
 }
-    });
-    if (!res.ok) {
-      var err = await res.json().catch(function () { return {}; });
-      alert(err.message || 'Submit failed');
-      return;
-    }
-    alert('Submitted successfully');
-    form.reset();
-  });
-})();
-</script>`;
-}
 
 /**
  * Display dynamic Toast Notification
