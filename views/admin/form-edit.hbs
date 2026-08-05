@@ -39,7 +39,37 @@
   </div>
 
   <div class="section-header mt-2">
-    <span>۲. ساختار فیلدها (فرمت JSON)</span>
+    <span>۲. اتصال به وب‌هوک و گوگل شیت (اختیاری)</span>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
+    <input class="form-control" id="webhookUrl" name="webhookUrl" placeholder="http://bc.teleskp.ir/gateways/store?email=$email$&body=$text$" value="{{form.webhookUrl}}" />
+    <small style="color: var(--text-muted);">
+      می‌توانید برای جایگذاری داینامیک مقادیر در کوئری‌استرینگ، از نام فیلد داخل <code>$نام‌فیلد$</code> استفاده کنید (مثلا <code>$mobile$</code>). در صورت وجود، جایگزین شده و درخواست با بدنه کامل JSON پست می‌شود.
+    </small>
+  </div>
+
+  <div class="grid-2">
+    <div class="form-group text-left">
+      <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
+      <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" placeholder="https://script.google.com/macros/s/.../exec" value="{{form.googleSheetUrl}}" />
+    </div>
+
+    <div class="form-group text-left">
+      <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
+      <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
+    </div>
+  </div>
+
+  <div class="form-group text-left">
+    <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
+    <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
+    <small style="color: var(--text-muted);">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
+  </div>
+
+  <div class="section-header mt-2">
+    <span>۳. ساختار فیلدها (فرمت JSON)</span>
     <button type="button" id="format-json-btn" class="btn btn-subtle">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
       <span>مرتب‌سازی و اعتبارسنجی JSON</span>

@@ -24,6 +24,10 @@ import { DeploymentService } from '../deployment/deployment.service';
 import { NodesService } from '../nodes/nodes.service';
 import { VersionService } from '../updates/version.service';
 import { isOutdated } from '../../common/app-version';
+// jdate.js extends standard classes
+import 'jdate.js';
+
+import { WebhookService } from '../form-engine/webhook.service';
 
 @Controller('spadmin')
 export class AdminController {
@@ -32,6 +36,7 @@ export class AdminController {
     private readonly deployment: DeploymentService,
     private readonly nodes: NodesService,
     private readonly versions: VersionService,
+    private readonly webhook: WebhookService,
   ) {}
 
   @Get('login')
@@ -128,6 +133,8 @@ export class AdminController {
         null,
         2,
       ),
+      columnMappingJson: JSON.stringify({ fullName: "A", email: "B" }, null, 2),
+      startRow: 2,
     };
   }
 
@@ -136,12 +143,15 @@ export class AdminController {
   @Render('admin/form-edit')
   async editForm(@Param('id') id: string) {
     const form = await this.forms.getById(id);
+    const meta: any = form.googleSheetMeta || {};
     return {
       layout: 'main',
       title: 'ویرایش فرم',
       active: 'forms',
       form,
       bodyJson: JSON.stringify(form.body, null, 2),
+      columnMappingJson: meta.columns ? JSON.stringify(meta.columns, null, 2) : '',
+      startRow: meta.startRow || 2,
     };
   }
 
@@ -153,11 +163,15 @@ export class AdminController {
   ) {
     try {
       const fields = JSON.parse(body.body || '[]');
+      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
       await this.forms.create({
         title: body.title,
         key: body.key,
         slug: body.slug,
         body: fields,
+        webhookUrl: body.webhookUrl || null,
+        googleSheetUrl: body.googleSheetUrl || null,
+        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
     } catch (err) {
@@ -168,7 +182,12 @@ export class AdminController {
         active: 'forms',
         error: message,
         bodyJson: body.body,
-        form: { title: body.title, key: body.key, slug: body.slug },
+        columnMappingJson: body.columnMapping,
+        startRow: body.startRow,
+        form: { 
+          title: body.title, key: body.key, slug: body.slug,
+          webhookUrl: body.webhookUrl, googleSheetUrl: body.googleSheetUrl
+        },
       });
     }
   }
@@ -182,10 +201,14 @@ export class AdminController {
   ) {
     try {
       const fields = JSON.parse(body.body || '[]');
+      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
       await this.forms.update(id, {
         title: body.title,
         slug: body.slug,
         body: fields,
+        webhookUrl: body.webhookUrl || null,
+        googleSheetUrl: body.googleSheetUrl || null,
+        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
     } catch (err) {
@@ -196,8 +219,16 @@ export class AdminController {
         title: 'ویرایش فرم',
         active: 'forms',
         error: message,
-        form,
+        form: {
+          ...form,
+          title: body.title || form.title,
+          slug: body.slug || form.slug,
+          webhookUrl: body.webhookUrl,
+          googleSheetUrl: body.googleSheetUrl,
+        },
         bodyJson: body.body,
+        columnMappingJson: body.columnMapping,
+        startRow: body.startRow,
       });
     }
   }
@@ -285,6 +316,142 @@ export class AdminController {
     }
   }
 
+  @Post('deploy/sync-all')
+  @UseGuards(AdminTokenGuard)
+  async syncAllLandings(@Res() res: Response) {
+    try {
+      const result = await this.deployment.syncAll();
+      return res.redirect(`/spadmin?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
+      return res.redirect(`/spadmin?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Post('deploy/sync/:slug')
+  @UseGuards(AdminTokenGuard)
+  async syncSingleLanding(@Param('slug') slug: string, @Res() res: Response) {
+    try {
+      await this.deployment.syncSingle(slug);
+      return res.redirect(`/spadmin?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
+      return res.redirect(`/spadmin?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Get('submissions')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/submissions')
+  async submissionsPage(
+    @Query('formId') formId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const forms = await this.forms.list();
+    const activeFormId = formId || undefined;
+
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    // در صورتی که تاریخ جلالی باشد، تبدیل به میلادی
+    if (startDate) {
+      const [jy, jm, jd] = startDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        fromDate = new Date(g.year, g.month - 1, g.date, 0, 0, 0, 0);
+      }
+    }
+
+    if (endDate) {
+      const [jy, jm, jd] = endDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        toDate = new Date(g.year, g.month - 1, g.date, 23, 59, 59, 999);
+      }
+    }
+
+    const rawSubmissions = await this.forms.listSubmissions(
+      activeFormId,
+      fromDate,
+      toDate,
+    );
+
+    const submissions = rawSubmissions.map((s) => {
+      const d = new Date(s.createdAt);
+      const j = (d as any).jalali;
+      const jdateStr = j
+        ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        : d.toLocaleString('fa-IR');
+
+      return {
+        id: s.id,
+        formTitle: s.form?.title || '—',
+        jalaliDate: jdateStr,
+        nodeTitle: s.edgeNode ? s.edgeNode.title : 'سرور Master (لوکال)',
+        payloadStr: JSON.stringify(s.payload, null, 2),
+      };
+    });
+
+    return {
+      layout: 'main',
+      title: 'لیدها',
+      active: 'submissions',
+      forms,
+      activeFormId,
+      startDate,
+      endDate,
+      submissions,
+    };
+  }
+
+  @Get('failed-webhooks')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/failed-webhooks')
+  async failedWebhooksPage(
+    @Query('flash') flash?: string,
+    @Query('error') error?: string,
+  ) {
+    const raw = await this.forms.listFailedWebhooks();
+    const items = raw.map((s) => {
+      const d = new Date(s.createdAt);
+      const j = (d as any).jalali;
+      const jdateStr = j
+        ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        : d.toLocaleString('fa-IR');
+
+      return {
+        id: s.id,
+        formTitle: s.form?.title || '—',
+        jalaliDate: jdateStr,
+        attempts: s.webhookAttempts,
+        lastError: s.webhookLastError,
+        payloadStr: JSON.stringify(s.payload, null, 2),
+      };
+    });
+
+    return {
+      layout: 'main',
+      title: 'خطاهای وب‌هوک',
+      active: 'failed-webhooks',
+      flash,
+      error,
+      items,
+    };
+  }
+
+  @Post('failed-webhooks/:id/retry')
+  @UseGuards(AdminTokenGuard)
+  async retryWebhook(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.webhook.retryFailedWebhook(id);
+      return res.redirect('/spadmin/failed-webhooks?flash=' + encodeURIComponent('وب‌هوک با موفقیت ارسال شد'));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return res.redirect('/spadmin/failed-webhooks?error=' + encodeURIComponent(`ارسال مجدد ناموفق بود: ${message}`));
+    }
+  }
+
   // --- مدیریت نودهای Edge ---
 
   @Get('nodes')
@@ -299,9 +466,16 @@ export class AdminController {
       this.versions.getMasterStatus(),
       this.versions.getNodesVersionStatus(),
     ]);
+
+    // پروب کردن سلامتی برای بدست آوردن تعداد سابمیشن‌های منتظر (pending) در Edge
+    const probes = await Promise.all(
+      nodes.map(n => this.nodes.probeHealth(n.id))
+    );
+
     const versionById = new Map(
       nodesVersion.nodes.map((n) => [n.id, n] as const),
     );
+
     return {
       layout: 'main',
       title: 'مدیریت نودها',
@@ -313,8 +487,9 @@ export class AdminController {
       latestVersion: nodesVersion.latestVersion,
       nodeUpdateCommand: nodesVersion.nodeUpdateCommand,
       hasOutdatedNodes: nodesVersion.nodes.some((n) => n.outdated),
-      nodes: nodes.map((n) => {
+      nodes: nodes.map((n, idx) => {
         const v = versionById.get(n.id);
+        const probe = probes[idx];
         return {
           ...n,
           lastSeenLabel: n.lastSeenAt
@@ -327,6 +502,7 @@ export class AdminController {
           localVersion: v?.localVersion || null,
           versionOutdated: v?.outdated || false,
           versionUnreachable: v?.unreachable || false,
+          pendingSubmissions: probe?.pendingSubmissions || 0,
         };
       }),
     };
@@ -480,6 +656,22 @@ export class AdminController {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed';
+      return res.redirect(
+        `/spadmin/nodes/${id}?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('nodes/:id/sync-landings')
+  @UseGuards(AdminTokenGuard)
+  async syncLandingsToNode(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.nodes.syncAllLandingsToNode(id);
+      return res.redirect(
+        `/spadmin/nodes/${id}?flash=${encodeURIComponent('همه لندینگ‌های موجود برای این نود در صف ارسال قرار گرفتند')}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
       return res.redirect(
         `/spadmin/nodes/${id}?error=${encodeURIComponent(message)}`,
       );

@@ -11,11 +11,14 @@ import axios from 'axios';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateEdgeNodeDto, UpdateEdgeNodeDto } from './dto/edge-node.dto';
 
+import { DeploymentService } from '../deployment/deployment.service';
+
 export type EdgeNodeWithInstall = EdgeNode & {
   installCommand: string;
   updateCommand: string;
   uninstallCommand: string;
   bootstrapUrl: string;
+  submissionCount?: number;
 };
 
 @Injectable()
@@ -29,15 +32,33 @@ export class NodesService {
 
   async list(): Promise<EdgeNodeWithInstall[]> {
     const nodes = await this.prisma.edgeNode.findMany({
+      include: {
+        _count: {
+          select: { submissions: true },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
-    return nodes.map((n) => this.withInstallMeta(n));
+    return nodes.map((n) => {
+      const meta = this.withInstallMeta(n);
+      meta.submissionCount = n._count?.submissions || 0;
+      return meta;
+    });
   }
 
   async getById(id: string): Promise<EdgeNodeWithInstall> {
-    const node = await this.prisma.edgeNode.findUnique({ where: { id } });
+    const node = await this.prisma.edgeNode.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: { submissions: true },
+        },
+      },
+    });
     if (!node) throw new NotFoundException('Node not found');
-    return this.withInstallMeta(node);
+    const meta = this.withInstallMeta(node);
+    meta.submissionCount = node._count?.submissions || 0;
+    return meta;
   }
 
   async create(dto: CreateEdgeNodeDto): Promise<EdgeNodeWithInstall> {
@@ -210,6 +231,7 @@ export class NodesService {
     version?: string;
     role?: string;
     nodeId?: string;
+    pendingSubmissions?: number;
     url?: string;
     rabbitmq?: {
       ok: boolean;
@@ -233,6 +255,7 @@ export class NodesService {
             version: data.version ? String(data.version) : undefined,
             role: data.role ? String(data.role) : undefined,
             nodeId: data.nodeId ? String(data.nodeId) : undefined,
+            pendingSubmissions: typeof data.pendingSubmissions === 'number' ? data.pendingSubmissions : 0,
             url,
             rabbitmq: rmq
               ? {
@@ -388,6 +411,45 @@ export class NodesService {
       message: `تایید ناموفق: ${lastMessage}`,
       node: this.withInstallMeta(updated),
     });
+  }
+
+  /** ارسال تمام لندینگ‌ها به صف اختصاصی این نود */
+  async syncAllLandingsToNode(id: string): Promise<void> {
+    const node = await this.prisma.edgeNode.findUnique({ where: { id } });
+    if (!node) throw new NotFoundException('نود پیدا نشد');
+
+    const landings = await this.prisma.landing.findMany({
+      where: { status: 'ACTIVE' },
+    });
+
+    const masterUrl = (
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const publicBase = (
+      this.config.get<string>('publicBaseUrl') || ''
+    ).replace(/\/$/, '');
+    const packagePath = (slug: string) => `/api/internal/landings/${slug}/package`;
+
+    for (const landing of landings) {
+      const idempotencyKey = `landing:${landing.slug}:node:${node.id}:v${landing.version}:${Date.now()}`;
+      await this.prisma.outboxEvent.create({
+        data: {
+          eventType: 'landing.sync',
+          idempotencyKey,
+          payload: {
+            idempotencyKey,
+            slug: landing.slug,
+            version: landing.version,
+            checksum: landing.checksum,
+            downloadUrl: `${masterUrl}${packagePath(landing.slug)}`,
+            ...(publicBase ? { downloadUrlFallback: `${publicBase}${packagePath(landing.slug)}` } : {}),
+            targetQueue: node.queueName,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    this.logger.log(`Queued ${landings.length} landings to sync specifically for node ${node.title}`);
   }
 
   /** صف‌های همه نودها برای Outbox */

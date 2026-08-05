@@ -66,6 +66,8 @@
           <th>عنوان</th>
           <th>آدرس</th>
           <th>پورت</th>
+          <th>تعداد لیدها</th>
+          <th>لیدهای در صف ارسال (Pending)</th>
           <th>نسخه</th>
           <th>وضعیت</th>
           <th>صف / Rabbit</th>
@@ -79,6 +81,16 @@
           <td style="font-weight: 600;">{{title}}</td>
           <td><code>{{host}}</code></td>
           <td><code>{{port}}</code></td>
+          <td><span class="status-pill">{{submissionCount}}</span></td>
+          <td>
+            {{#if pendingSubmissions}}
+              <span class="status-pill status-err" style="font-weight: bold; background: rgba(239, 68, 68, 0.2); color: #f87171;">
+                {{pendingSubmissions}} لید ارسال نشده
+              </span>
+            {{else}}
+              <span class="status-pill status-ok">۰</span>
+            {{/if}}
+          </td>
           <td>
             {{#if localVersion}}
               <code>v{{localVersion}}</code>

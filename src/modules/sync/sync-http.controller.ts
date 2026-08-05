@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { isMaster } from '../../config/role';
 import { LandingApplyService } from './landing-apply.service';
 import { FormSubmissionSyncPayload } from './sync.types';
+import { WebhookService } from '../form-engine/webhook.service';
 
 /**
  * مسیر HTTP برای سابمیشن‌های Edge→Master —
@@ -23,6 +24,7 @@ export class SyncHttpController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly landingApply: LandingApplyService,
+    private readonly webhook: WebhookService,
   ) {}
 
   @Post('api/internal/sync/submissions')
@@ -63,16 +65,27 @@ export class SyncHttpController {
       create: {
         id: payload.submissionId,
         formId: form.id,
+        edgeNodeId: payload.edgeNodeId || null,
         payload: (payload.payload ?? {}) as Prisma.InputJsonValue,
         createdAt: new Date(payload.createdAt),
       },
-      update: {},
+      update: {
+        edgeNodeId: payload.edgeNodeId || null,
+      },
     });
 
     await this.landingApply.markProcessed(payload.idempotencyKey);
     this.logger.log(
       `Form submission received via HTTP push: ${payload.submissionId}`,
     );
+
+    // اجرای وب‌هوک و اتصال گوگل‌شیت
+    await this.webhook.dispatch(form, {
+      id: payload.submissionId,
+      payload: payload.payload as Record<string, unknown>,
+      createdAt: new Date(payload.createdAt),
+    });
+
     return { ok: true };
   }
 }

@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isEdge, isMaster } from '../../config/role';
 import { OutboxService } from '../sync/outbox.service';
+import { WebhookService } from './webhook.service';
 import { CreateFormDto, UpdateFormDto } from './dto/form.dto';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class FormEngineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
+    private readonly webhook: WebhookService,
   ) {}
 
   list() {
@@ -39,6 +41,9 @@ export class FormEngineService {
         key: dto.key,
         slug: dto.slug,
         body: dto.body as Prisma.InputJsonValue,
+        webhookUrl: dto.webhookUrl || null,
+        googleSheetUrl: dto.googleSheetUrl || null,
+        googleSheetMeta: dto.googleSheetMeta ? (dto.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
     });
     // تعریف فرم رو برای Edgeها می‌فرستیم
@@ -58,6 +63,9 @@ export class FormEngineService {
         ...(dto.body !== undefined
           ? { body: dto.body as Prisma.InputJsonValue }
           : {}),
+        ...(dto.webhookUrl !== undefined ? { webhookUrl: dto.webhookUrl || null } : {}),
+        ...(dto.googleSheetUrl !== undefined ? { googleSheetUrl: dto.googleSheetUrl || null } : {}),
+        ...(dto.googleSheetMeta !== undefined ? { googleSheetMeta: dto.googleSheetMeta ? (dto.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull } : {}),
       },
     });
     if (isMaster()) {
@@ -93,9 +101,12 @@ export class FormEngineService {
     }
 
     // اول روی همین گره ذخیره می‌شه (Edge برای سرعت/در دسترس بودن)
+    const edgeNodeId = process.env.EDGE_NODE_ID;
+    
     const submission = await this.prisma.formSubmission.create({
       data: {
         formId: form.id,
+        edgeNodeId: edgeNodeId || null,
         payload: payload as Prisma.InputJsonValue,
       },
     });
@@ -106,19 +117,54 @@ export class FormEngineService {
         idempotencyKey: `submission:${submission.id}`,
         submissionId: submission.id,
         formKey: form.key,
+        edgeNodeId,
         payload,
         createdAt: submission.createdAt.toISOString(),
+      });
+    } else {
+      // اگر روی Master هستیم، مستقیما وب‌هوک را فایر می‌کنیم
+      await this.webhook.dispatch(form, {
+        id: submission.id,
+        payload: submission.payload as Record<string, unknown>,
+        createdAt: submission.createdAt,
       });
     }
 
     return submission;
   }
 
-  listSubmissions(formId: string) {
+  listFailedWebhooks() {
     return this.prisma.formSubmission.findMany({
-      where: { formId },
+      where: { webhookStatus: 'FAILED' },
+      include: {
+        form: { select: { title: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  listSubmissions(formId?: string, fromDate?: Date, toDate?: Date) {
+    const where: Prisma.FormSubmissionWhereInput = {};
+    if (formId) where.formId = formId;
+    
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt.gte = fromDate;
+      if (toDate) where.createdAt.lte = toDate;
+    }
+
+    return this.prisma.formSubmission.findMany({
+      where,
+      include: {
+        form: {
+          select: { title: true }
+        },
+        edgeNode: {
+          select: { title: true, host: true }
+        }
+      },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 100, // محدودیت پیش‌فرض، در صورت نیاز می‌توان صفحه‌بندی اضافه کرد
     });
   }
 
@@ -128,6 +174,9 @@ export class FormEngineService {
     key: string;
     slug: string;
     body: unknown;
+    webhookUrl?: string | null;
+    googleSheetUrl?: string | null;
+    googleSheetMeta?: unknown;
     updatedAt: Date;
   }) {
     await this.outbox.enqueueFormSync({
@@ -140,6 +189,9 @@ export class FormEngineService {
         key: form.key,
         slug: form.slug,
         body: form.body,
+        webhookUrl: form.webhookUrl,
+        googleSheetUrl: form.googleSheetUrl,
+        googleSheetMeta: form.googleSheetMeta,
       },
     });
   }

@@ -44,7 +44,7 @@ services:
     build: .
     environment:
       NODE_ROLE: MASTER
-      PORT: "3000"
+      PORT: "2001"
       DATABASE_URL: postgresql://syncpage:syncpage@db:5432/syncpage?schema=public
       RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
       RABBITMQ_PUBLIC_URL: amqp://syncpage:syncpage@localhost:5672
@@ -53,7 +53,7 @@ services:
       ADMIN_TOKEN: change-me-admin-token
       STATIC_PAGES_PATH: /app/static_pages
       TEMP_PATH: /app/temp
-      MASTER_INTERNAL_URL: http://app-master:3000
+      MASTER_INTERNAL_URL: http://app-master:2001
       PUBLIC_BASE_URL: http://localhost
       OUTBOX_POLL_MS: "3000"
       SYNCPAGE_GITHUB_REPO: rm1dev/SyncPage
@@ -67,9 +67,9 @@ services:
       rabbitmq:
         condition: service_healthy
     expose:
-      - "3000"
+      - "2001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:2001/api/health"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -78,15 +78,16 @@ services:
     build: .
     environment:
       NODE_ROLE: EDGE
-      PORT: "3000"
+      EDGE_NODE_ID: "03d3a6c3-4fec-4ab7-b56b-04cb756c828f"
+      PORT: "2001"
       DATABASE_URL: postgresql://syncpage:syncpage@db:5432/syncpage?schema=public
       RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
-      RABBITMQ_QUEUE: landing.sync
+      RABBITMQ_QUEUE: landing.sync.03d3a6c3
       RABBITMQ_MASTER_QUEUE: form.submission
       ADMIN_TOKEN: change-me-admin-token
       STATIC_PAGES_PATH: /app/static_pages
       TEMP_PATH: /app/temp
-      MASTER_INTERNAL_URL: http://app-master:3000
+      MASTER_INTERNAL_URL: http://app-master:2001
       PUBLIC_BASE_URL: http://localhost
     volumes:
       - static_pages:/app/static_pages
@@ -99,9 +100,9 @@ services:
       app-master:
         condition: service_healthy
     expose:
-      - "3000"
+      - "2001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:2001/api/health"]
       interval: 10s
       timeout: 5s
       retries: 12

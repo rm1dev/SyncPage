@@ -90,6 +90,16 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** تعداد لیدها/ایونت‌هایی که در Outbox این نود مانده و هنوز ارسال نشده است */
+  async getPendingSubmissionsCount(): Promise<number> {
+    return this.prisma.outboxEvent.count({
+      where: {
+        eventType: 'form.submission.sync',
+        status: { in: [OutboxStatus.PENDING, OutboxStatus.FAILED] },
+      },
+    });
+  }
+
   private async connectWithRetry(attempt = 1): Promise<void> {
     if (this.destroyed || this.connecting) return;
     this.connecting = true;
@@ -255,8 +265,13 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
    * برای landing/form.sync: به همه نودها بفرست
    * اگه نودی ثبت نشده، همون صف پیش‌فرض (محلی/سازگاری)
    */
-  private async queuesForEvent(eventType: string): Promise<string[]> {
+  private async queuesForEvent(eventType: string, payload?: unknown): Promise<string[]> {
     if (eventType === 'form.submission.sync') return [this.masterQueue()];
+
+    // اگه هدف یک نود خاص باشه، فقط برای همون نود بفرست
+    if (payload && typeof payload === 'object' && 'targetQueue' in payload) {
+      return [(payload as any).targetQueue];
+    }
 
     const nodeQueues = await this.listNodeQueues();
     if (nodeQueues.length > 0) return nodeQueues;
@@ -343,7 +358,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
 
           if (this.channel) {
             // مسیر اصلی: AMQP
-            const queues = await this.queuesForEvent(event.eventType);
+            const queues = await this.queuesForEvent(event.eventType, payload);
             const nestMessage = {
               pattern: event.eventType,
               data: payload,

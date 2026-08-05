@@ -7,6 +7,8 @@ export interface LandingSyncPayload {
   /** اگه downloadUrl از IP داخلی Master نرسید */
   downloadUrlFallback?: string;
   formSnapshot?: unknown;
+  /** فقط روی همون نود پوش بشه (اختیاری) */
+  targetQueue?: string;
 }
 
 export type FormSyncAction = 'upsert' | 'delete';
@@ -21,6 +23,9 @@ export interface FormSyncPayload {
     key: string;
     slug: string;
     body: unknown;
+    webhookUrl?: string | null;
+    googleSheetUrl?: string | null;
+    googleSheetMeta?: unknown;
   };
 }
 
@@ -28,6 +33,7 @@ export interface FormSubmissionSyncPayload {
   idempotencyKey: string;
   submissionId: string;
   formKey: string;
+  edgeNodeId?: string;
   payload: Record<string, unknown>;
   createdAt: string;
 }

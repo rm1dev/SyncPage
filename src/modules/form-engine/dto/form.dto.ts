@@ -15,6 +15,17 @@ export class CreateFormDto {
 
   @IsArray()
   body!: Record<string, unknown>[];
+
+  @IsOptional()
+  @IsString()
+  webhookUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  googleSheetUrl?: string | null;
+
+  @IsOptional()
+  googleSheetMeta?: Record<string, unknown> | null;
 }
 
 export class UpdateFormDto {
@@ -31,6 +42,17 @@ export class UpdateFormDto {
   @IsOptional()
   @IsArray()
   body?: Record<string, unknown>[];
+
+  @IsOptional()
+  @IsString()
+  webhookUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  googleSheetUrl?: string | null;
+
+  @IsOptional()
+  googleSheetMeta?: Record<string, unknown> | null;
 }
 
 export class SubmitFormDto {

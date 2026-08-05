@@ -165,6 +165,48 @@ export class DeploymentService implements OnModuleInit {
     return landing;
   }
 
+  async syncSingle(slug: string) {
+    const landing = await this.prisma.landing.findUnique({ where: { slug } });
+    if (!landing) throw new NotFoundException('لندینگ یافت نشد');
+
+    const masterUrl = (
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const publicBase = (
+      this.config.get<string>('publicBaseUrl') || ''
+    ).replace(/\/$/, '');
+    const packagePath = `/api/internal/landings/${slug}/package`;
+    // استفاده از Date.now() برای force کردن سینک حتی اگر نسخه عوض نشده باشد
+    const idempotencyKey = `landing:${slug}:v${landing.version}:${landing.checksum}:force:${Date.now()}`;
+
+    await this.prisma.outboxEvent.create({
+      data: {
+        eventType: 'landing.sync',
+        idempotencyKey,
+        payload: {
+          idempotencyKey,
+          slug,
+          version: landing.version,
+          checksum: landing.checksum,
+          downloadUrl: `${masterUrl}${packagePath}`,
+          ...(publicBase ? { downloadUrlFallback: `${publicBase}${packagePath}` } : {}),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return landing;
+  }
+
+  async syncAll() {
+    const landings = await this.listLandings();
+    for (const landing of landings) {
+      if (landing.status === 'ACTIVE') {
+        await this.syncSingle(landing.slug);
+      }
+    }
+    return { synced: landings.length };
+  }
+
   getPackagePath(slug: string): string {
     const path = join(this.files.tempRoot, 'packages', `${slug}.zip`);
     if (!existsSync(path)) {

@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isEdge, isMaster } from '../../config/role';
 import { LandingApplyService } from './landing-apply.service';
+import { WebhookService } from '../form-engine/webhook.service';
 import {
   FormSubmissionSyncPayload,
   FormSyncPayload,
@@ -22,6 +23,7 @@ export class SyncConsumerController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly landingApply: LandingApplyService,
+    private readonly webhook: WebhookService,
   ) {}
 
   @EventPattern('landing.sync')
@@ -104,11 +106,17 @@ export class SyncConsumerController {
             key: payload.form.key,
             slug: payload.form.slug,
             body: payload.form.body as Prisma.InputJsonValue,
+            webhookUrl: payload.form.webhookUrl || null,
+            googleSheetUrl: payload.form.googleSheetUrl || null,
+            googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
           },
           update: {
             title: payload.form.title,
             slug: payload.form.slug,
             body: payload.form.body as Prisma.InputJsonValue,
+            webhookUrl: payload.form.webhookUrl || null,
+            googleSheetUrl: payload.form.googleSheetUrl || null,
+            googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
           },
         });
       }
@@ -167,16 +175,27 @@ export class SyncConsumerController {
         create: {
           id: payload.submissionId,
           formId: form.id,
+          edgeNodeId: payload.edgeNodeId || null,
           payload: payload.payload as Prisma.InputJsonValue,
           createdAt: new Date(payload.createdAt),
         },
-        update: {},
+        update: {
+          edgeNodeId: payload.edgeNodeId || null,
+        },
       });
 
       await this.landingApply.markProcessed(payload.idempotencyKey);
       this.logger.log(
         `Form submission synced on master: ${payload.submissionId}`,
       );
+
+      // اجرای وب‌هوک و اتصال گوگل‌شیت به صورت متمرکز روی مستر
+      await this.webhook.dispatch(form, {
+        id: payload.submissionId,
+        payload: payload.payload as Record<string, unknown>,
+        createdAt: new Date(payload.createdAt),
+      });
+
       channel.ack(originalMsg);
     } catch (err) {
       this.fail(err, channel, originalMsg);

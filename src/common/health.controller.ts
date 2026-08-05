@@ -12,6 +12,7 @@ export class HealthController {
     const role = process.env.NODE_ROLE || 'MASTER';
     const nodeId = process.env.EDGE_NODE_ID || undefined;
     const rabbitmq = await this.outbox.getRabbitStatus();
+    const pendingSubmissions = role === 'EDGE' ? await this.outbox.getPendingSubmissionsCount() : 0;
     const syncPullEnabled =
       isEdge() && process.env.SYNC_PULL_ENABLED !== '0';
     return {
@@ -21,6 +22,7 @@ export class HealthController {
       version: getLocalVersion(),
       ...(nodeId ? { nodeId } : {}),
       rabbitmq,
+      pendingSubmissions,
       syncPull: {
         enabled: syncPullEnabled,
         intervalMs: syncPullEnabled

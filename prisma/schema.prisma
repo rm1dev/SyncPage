@@ -21,25 +21,35 @@ enum OutboxStatus {
 }
 
 model Form {
-  id          String           @id @default(uuid())
-  title       String
-  key         String           @unique
-  slug        String           @unique
-  body        Json
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  submissions FormSubmission[]
+  id              String           @id @default(uuid())
+  title           String
+  key             String           @unique
+  slug            String           @unique
+  body            Json
+  webhookUrl      String?
+  googleSheetUrl  String?
+  googleSheetMeta Json?            // { "startRow": 2, "columns": { "fullName": "A", "email": "B" } }
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  submissions     FormSubmission[]
 }
 
 model FormSubmission {
-  id        String   @id @default(uuid())
-  formId    String
-  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
-  payload   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String    @id @default(uuid())
+  formId     String
+  form       Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  edgeNodeId String?
+  edgeNode   EdgeNode? @relation(fields: [edgeNodeId], references: [id], onDelete: SetNull)
+  payload    Json
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  webhookStatus        OutboxStatus @default(SENT)
+  webhookAttempts      Int          @default(0)
+  webhookLastError     String?
 
   @@index([formId])
+  @@index([edgeNodeId])
 }
 
 model Landing {
@@ -92,6 +102,7 @@ model EdgeNode {
   rabbitStatus    EdgeNodeStatus @default(PENDING)
   rabbitLastError String?
   notes           String?
+  submissions     FormSubmission[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
