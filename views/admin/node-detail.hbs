@@ -96,6 +96,80 @@
   </div>
 {{/if}}
 
+{{#if activeDownload}}
+  <div class="content-wrapper mt-3">
+    <div class="section-header">
+      <span>در حال دانلود</span>
+      <span class="status-pill status-warn">زنده</span>
+    </div>
+    <div style="background: var(--surface-hover); padding: 1rem; border-radius: 6px; border: 1px solid var(--border-color);">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+        <strong style="font-size: 1.1rem;">{{activeDownload.slug}} <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: normal;">(نسخه {{activeDownload.version}})</span></strong>
+        <span style="font-family: monospace; background: var(--color-primary-bg); color: var(--color-primary); padding: 0.1rem 0.5rem; border-radius: 4px; font-weight: 600;">
+          {{activeDownload.currentSpeed}}
+        </span>
+      </div>
+      
+      <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem;">
+        <div style="height: 100%; width: {{activeDownload.progress}}%; background: var(--color-primary); transition: width 1s linear;"></div>
+      </div>
+      
+      <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted);">
+        <span>{{activeDownload.progress}}% کامل شده</span>
+        {{#if activeDownload.etaSeconds}}
+          <span>زمان باقیمانده: حدود {{activeDownload.etaSeconds}} ثانیه</span>
+        {{else}}
+          <span>در حال محاسبه...</span>
+        {{/if}}
+      </div>
+      
+      {{#if activeDownload.retries}}
+        <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--color-warning);">
+          تعداد تلاش مجدد (Resume): {{activeDownload.retries}} بار
+        </div>
+      {{/if}}
+    </div>
+  </div>
+{{/if}}
+
+{{#if downloadHistory.length}}
+  <div class="content-wrapper mt-3">
+    <div class="section-header">
+      <span>تاریخچه دانلودهای اخیر</span>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>لندینگ</th>
+            <th>مدت زمان</th>
+            <th>سرعت میانگین</th>
+            <th>وضعیت</th>
+            <th>زمان انجام</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each downloadHistory}}
+          <tr>
+            <td style="font-weight: 600;">{{slug}}</td>
+            <td>{{durationSec}} ثانیه</td>
+            <td style="font-family: monospace;">{{avgSpeed}}</td>
+            <td>
+              {{#if (eq status 'SUCCESS')}}
+                <span class="status-pill status-ok">موفق</span>
+              {{else}}
+                <span class="status-pill status-err" title="{{error}}">خطا</span>
+              {{/if}}
+            </td>
+            <td dir="ltr" style="text-align: right; font-size: 0.85rem; color: var(--text-muted);">{{timestamp}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{{/if}}
+
 <!-- کامند نصب silent -->
 <div class="content-wrapper">
   <div class="section-header">

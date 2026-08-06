@@ -238,6 +238,8 @@ export class NodesService {
       queue?: string;
       error?: string;
     };
+    activeDownload?: any;
+    downloadHistory?: any[];
   } | null> {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
     if (!node) return null;
@@ -258,6 +260,15 @@ export class NodesService {
             pendingSubmissions: typeof data.pendingSubmissions === 'number' ? data.pendingSubmissions : 0,
             url,
             rabbitmq: rmq
+              ? {
+                  ok: !!rmq.ok,
+                  queue: rmq.queue ? String(rmq.queue) : undefined,
+                  error: rmq.error ? String(rmq.error) : undefined,
+                }
+              : undefined,
+            activeDownload: data.activeDownload,
+            downloadHistory: data.downloadHistory,
+          };
               ? {
                   ok: !!rmq.ok,
                   queue: rmq.queue ? String(rmq.queue) : undefined,

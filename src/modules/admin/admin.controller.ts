@@ -730,6 +730,8 @@ export class AdminController {
         rabbitLiveOk: probed?.rabbitmq?.ok ?? null,
         rabbitLiveError: probed?.rabbitmq?.error || null,
         rabbitLiveQueue: probed?.rabbitmq?.queue || node.queueName,
+        activeDownload: probed?.activeDownload,
+        downloadHistory: probed?.downloadHistory,
       },
     };
   }
