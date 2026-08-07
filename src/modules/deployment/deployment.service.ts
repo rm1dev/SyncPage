@@ -237,6 +237,8 @@ export class DeploymentService implements OnModuleInit {
       orderBy: { updatedAt: 'desc' },
     });
 
+    const settings = await this.prisma.systemSetting.findMany();
+
     return {
       landings: rows.map((row) => ({
         slug: row.slug,
@@ -254,8 +256,18 @@ export class DeploymentService implements OnModuleInit {
         key: f.key,
         slug: f.slug,
         body: f.body,
+        webhookUrl: f.webhookUrl,
+        googleSheetUrl: f.googleSheetUrl,
+        googleSheetMeta: f.googleSheetMeta,
+        otpEnabled: f.otpEnabled,
+        otpField: f.otpField,
+        otpTemplate: f.otpTemplate,
         updatedAt: f.updatedAt.toISOString(),
         idempotencyKey: `form:${f.key}:${f.updatedAt.getTime()}`,
+      })),
+      settings: settings.map((s) => ({
+        key: s.key,
+        value: s.value,
       })),
     };
   }

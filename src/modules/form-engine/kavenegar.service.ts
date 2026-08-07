@@ -21,6 +21,28 @@ export class KavenegarService {
       create: { key: 'KAVENEGAR_API_KEY', value: key.trim() },
       update: { value: key.trim() },
     });
+    
+    // صف کردن رویداد همگام‌سازی تنظیمات برای Edgeها
+    if (process.env.NODE_ROLE !== 'EDGE') {
+      try {
+        const { OutboxService } = await import('../sync/outbox.service');
+        // Instantiating OutboxService dynamically is tough due to dependencies.
+        // Prisma raw query will fail to insert to outbox table if not properly structured.
+        // We will insert outbox record directly through prisma instead of importing service.
+        await this.prisma.outboxEvent.create({
+          data: {
+            eventType: 'setting.sync',
+            idempotencyKey: `setting:KAVENEGAR_API_KEY:${Date.now()}`,
+            payload: {
+              key: 'KAVENEGAR_API_KEY',
+              value: key.trim()
+            }
+          }
+        });
+      } catch (err) {
+        this.logger.error('Failed to enqueue setting sync', err);
+      }
+    }
   }
 
   /**

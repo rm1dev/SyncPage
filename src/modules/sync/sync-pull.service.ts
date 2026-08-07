@@ -29,11 +29,23 @@ type FormManifestItem = {
   body: unknown;
   updatedAt: string;
   idempotencyKey: string;
+  webhookUrl?: string | null;
+  googleSheetUrl?: string | null;
+  googleSheetMeta?: unknown;
+  otpEnabled?: boolean | null;
+  otpField?: string | null;
+  otpTemplate?: string | null;
+};
+
+type SettingManifestItem = {
+  key: string;
+  value: string;
 };
 
 type Manifest = {
   landings?: ManifestItem[];
   forms?: FormManifestItem[];
+  settings?: SettingManifestItem[];
 };
 
 /**
@@ -74,7 +86,20 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       const manifest = await this.fetchManifest();
-      // اول فرم‌ها که لندینگ‌های وابسته به فرم چیزی کم نداشته باشن
+      // اول فرم‌ها و تنظیمات که لندینگ‌های وابسته به فرم چیزی کم نداشته باشن
+      if (manifest.settings) {
+        for (const s of manifest.settings) {
+          try {
+            await this.prisma.systemSetting.upsert({
+              where: { key: s.key },
+              create: { key: s.key, value: s.value },
+              update: { value: s.value },
+            });
+          } catch (err) {
+            this.logger.error(`HTTP pull setting apply failed (${s.key}): ${err}`);
+          }
+        }
+      }
       await this.syncForms(manifest.forms);
       for (const item of manifest.landings ?? []) {
         await this.syncOne(item);
@@ -117,6 +142,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
         return {
           landings: Array.isArray(data?.landings) ? data.landings : [],
           forms: Array.isArray(data?.forms) ? data.forms : undefined,
+          settings: Array.isArray(data?.settings) ? data.settings : undefined,
         };
       } catch (err) {
         lastErr = err;
@@ -146,11 +172,23 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             key: f.key,
             slug: f.slug,
             body: f.body as Prisma.InputJsonValue,
+            webhookUrl: f.webhookUrl || null,
+            googleSheetUrl: f.googleSheetUrl || null,
+            googleSheetMeta: f.googleSheetMeta ? (f.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            otpEnabled: f.otpEnabled || false,
+            otpField: f.otpField || 'mobile',
+            otpTemplate: f.otpTemplate || 'verify',
           },
           update: {
             title: f.title,
             slug: f.slug,
             body: f.body as Prisma.InputJsonValue,
+            webhookUrl: f.webhookUrl || null,
+            googleSheetUrl: f.googleSheetUrl || null,
+            googleSheetMeta: f.googleSheetMeta ? (f.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            otpEnabled: f.otpEnabled || false,
+            otpField: f.otpField || 'mobile',
+            otpTemplate: f.otpTemplate || 'verify',
           },
         });
         await this.apply.markProcessed(f.idempotencyKey);

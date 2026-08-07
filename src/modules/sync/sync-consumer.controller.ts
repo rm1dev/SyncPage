@@ -135,6 +135,44 @@ export class SyncConsumerController {
     }
   }
 
+  @EventPattern('setting.sync')
+  async handleSettingSync(
+    @Payload()
+    raw:
+      | { key: string; value: string }
+      | { pattern?: string; data?: { key: string; value: string } },
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const payload = this.unwrap<{ key: string; value: string }>(raw);
+
+    try {
+      if (!isEdge()) {
+        this.logger.warn('Ignoring setting.sync on non-EDGE node');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (!payload?.key || !payload.value) {
+        this.logger.error('Invalid setting.sync payload');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      await this.prisma.systemSetting.upsert({
+        where: { key: payload.key },
+        create: { key: payload.key, value: payload.value },
+        update: { value: payload.value },
+      });
+
+      this.logger.log(`Setting synced on edge: ${payload.key}`);
+      channel.ack(originalMsg);
+    } catch (err) {
+      this.fail(err, channel, originalMsg);
+    }
+  }
+
   @EventPattern('form.submission.sync')
   async handleFormSubmissionSync(
     @Payload()

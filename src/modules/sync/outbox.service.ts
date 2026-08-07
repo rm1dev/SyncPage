@@ -333,7 +333,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       // هر نقش فقط eventهای مربوط به خودش رو publish می‌کنه
       const eventTypes =
         role === 'MASTER'
-          ? ['landing.sync', 'form.sync']
+          ? ['landing.sync', 'form.sync', 'setting.sync']
           : ['form.submission.sync'];
 
       const batch = await this.prisma.outboxEvent.findMany({
@@ -452,6 +452,16 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       data: {
         eventType: 'form.submission.sync',
         idempotencyKey: payload.idempotencyKey,
+        payload: payload as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  async enqueueSettingSync(payload: { key: string; value: string }) {
+    return this.prisma.outboxEvent.create({
+      data: {
+        eventType: 'setting.sync',
+        idempotencyKey: `setting:${payload.key}:${Date.now()}`,
         payload: payload as unknown as Prisma.InputJsonValue,
       },
     });
