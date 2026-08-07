@@ -100,6 +100,16 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** تعداد ایونت‌هایی که در Outbox مستر مانده‌اند و باید به Edgeها ارسال شوند */
+  async getMasterPendingSyncCount(): Promise<number> {
+    return this.prisma.outboxEvent.count({
+      where: {
+        eventType: { in: ['landing.sync', 'form.sync', 'setting.sync'] },
+        status: { in: [OutboxStatus.PENDING, OutboxStatus.FAILED] },
+      },
+    });
+  }
+
   private async connectWithRetry(attempt = 1): Promise<void> {
     if (this.destroyed || this.connecting) return;
     this.connecting = true;

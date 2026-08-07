@@ -29,8 +29,8 @@ import 'jdate.js';
 
 import { WebhookService } from '../form-engine/webhook.service';
 import { KavenegarService } from '../form-engine/kavenegar.service';
-
 import { IntegrationProfileService } from '../form-engine/integration-profile.service';
+import { OutboxService } from '../sync/outbox.service';
 
 @Controller('spadmin')
 export class AdminController {
@@ -42,6 +42,7 @@ export class AdminController {
     private readonly webhook: WebhookService,
     private readonly kavenegar: KavenegarService,
     private readonly profiles: IntegrationProfileService,
+    private readonly outbox: OutboxService,
   ) {}
 
   @Get('login')
@@ -85,9 +86,10 @@ export class AdminController {
     const forms = await this.forms.list();
     const landings = await this.deployment.listLandings();
     const nodes = await this.nodes.list();
-    const [masterUpdate, nodesVersion] = await Promise.all([
+    const [masterUpdate, nodesVersion, pendingSyncCount] = await Promise.all([
       this.versions.getMasterStatus(),
       this.versions.getNodesVersionStatus(),
+      this.outbox.getMasterPendingSyncCount(),
     ]);
     const outdatedNodes = nodesVersion.nodes.filter((n) => n.outdated);
     return {
@@ -98,6 +100,7 @@ export class AdminController {
       appVersion: masterUpdate.localVersion,
       masterUpdate,
       outdatedNodes,
+      pendingSyncCount,
       nodeUpdateCommand: nodesVersion.nodeUpdateCommand,
       forms: forms.map((f) => ({
         ...f,
@@ -481,6 +484,8 @@ export class AdminController {
     await this.kavenegar.setApiKey(apiKey);
     return res.redirect('/spadmin/settings?flash=' + encodeURIComponent('تنظیمات کاوه‌نگار ذخیره شد'));
   }
+
+  @Get('submissions')
   @UseGuards(AdminTokenGuard)
   @Render('admin/submissions')
   async submissionsPage(
