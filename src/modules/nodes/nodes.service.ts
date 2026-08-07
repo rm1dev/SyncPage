@@ -374,7 +374,13 @@ export class NodesService {
           this.logger.warn(
             `Node ONLINE via HTTP; Rabbit degraded (${node.title}): ${rabbitErr}`,
           );
-          return this.withInstallMeta(updated);
+          
+          const result = this.withInstallMeta(updated) as any;
+          result.pendingSubmissions = data.pendingSubmissions || 0;
+          result.activeDownload = data.activeDownload || null;
+          result.downloadHistory = data.downloadHistory || [];
+          result.edgeLandings = data.edgeLandings || [];
+          return result;
         }
 
         const updated = await this.prisma.edgeNode.update({
@@ -390,7 +396,14 @@ export class NodesService {
         this.logger.log(
           `Node verified online (HTTP+Rabbit): ${node.title} via ${url}`,
         );
-        return this.withInstallMeta(updated);
+        
+        // خروجی را برای ادمین داشبورد بهبود می‌دیم تا دانلود و لندینگ‌ها هم برگردن
+        const result = this.withInstallMeta(updated) as any;
+        result.pendingSubmissions = data.pendingSubmissions || 0;
+        result.activeDownload = data.activeDownload || null;
+        result.downloadHistory = data.downloadHistory || [];
+        result.edgeLandings = data.edgeLandings || [];
+        return result;
       } catch (err) {
         if (err instanceof BadRequestException) throw err;
         errors.push(this.translateProbeError(err, url));

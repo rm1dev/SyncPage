@@ -654,6 +654,7 @@ export class AdminController {
           versionOutdated: v?.outdated || false,
           versionUnreachable: v?.unreachable || false,
           pendingSubmissions: probe?.pendingSubmissions || 0,
+          activeDownload: probe?.activeDownload || null,
         };
       }),
     };
@@ -710,12 +711,27 @@ export class AdminController {
     const node = await this.nodes.getById(id);
     const [masterUpdate, probed] = await Promise.all([
       this.versions.getMasterStatus(),
-      this.nodes.probeHealth(id),
+      this.nodes.probeHealth(id).catch(() => null),
     ]);
     const latest = masterUpdate.latestVersion;
     const localVersion = probed?.version || null;
     const versionOutdated =
       !!latest && !!localVersion && isOutdated(localVersion, latest);
+      
+    // مقایسه نسخه‌ها برای بررسی همگام بودن
+    const edgeLandings = (probed as any)?.edgeLandings || [];
+    const masterLandings = await this.deployment.listLandings();
+    
+    const landingStatus = masterLandings.map(ml => {
+      const el = edgeLandings.find((e: any) => e.slug === ml.slug);
+      return {
+        slug: ml.slug,
+        masterVersion: ml.version,
+        edgeVersion: el ? el.version : 'ندارد',
+        isSynced: el && el.version === ml.version && el.checksum === ml.checksum
+      };
+    });
+
     return {
       layout: 'main',
       title: node.title,
@@ -723,6 +739,7 @@ export class AdminController {
       flash,
       error,
       appVersion: masterUpdate.localVersion,
+      landingStatus,
       node: {
         ...node,
         lastSeenLabel: node.lastSeenAt
@@ -742,6 +759,41 @@ export class AdminController {
         activeDownload: probed?.activeDownload,
         downloadHistory: probed?.downloadHistory,
       },
+    };
+  }
+
+  @Get('api/nodes/:id/live-status')
+  @UseGuards(AdminTokenGuard)
+  async getLiveNodeStatus(@Param('id') id: string) {
+    const node = await this.nodes.getById(id);
+    const probed = await this.nodes.probeHealth(id).catch(() => null);
+    const masterLandings = await this.deployment.listLandings();
+    const edgeLandings = (probed as any)?.edgeLandings || [];
+
+    const landingStatus = masterLandings.map(ml => {
+      const el = edgeLandings.find((e: any) => e.slug === ml.slug);
+      return {
+        slug: ml.slug,
+        masterVersion: ml.version,
+        edgeVersion: el ? el.version : null,
+        isSynced: el && el.version === ml.version && el.checksum === ml.checksum
+      };
+    });
+
+    return {
+      ok: !!probed?.ok,
+      node: {
+        id: node.id,
+        title: node.title,
+        status: node.status,
+        rabbitStatus: node.rabbitStatus,
+      },
+      stats: {
+        pendingSubmissions: (probed as any)?.pendingSubmissions || 0,
+        activeDownload: (probed as any)?.activeDownload || null,
+        downloadHistory: (probed as any)?.downloadHistory || [],
+      },
+      landingStatus,
     };
   }
 

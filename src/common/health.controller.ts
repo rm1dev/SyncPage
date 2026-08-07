@@ -22,6 +22,42 @@ export class HealthController {
       
     const activeDownload = role === 'EDGE' && this.landingApply ? this.landingApply.getActiveDownload() : null;
     const downloadHistory = role === 'EDGE' && this.landingApply ? this.landingApply.getDownloadHistory() : [];
+    
+    // واکشی لیست لندینگ‌ها و نسخه آن‌ها از پوشه روی دیسک
+    let edgeLandings: any[] = [];
+    if (role === 'EDGE' && this.landingApply) {
+      try {
+        const { readdirSync, existsSync, readFileSync } = await import('fs');
+        const { join } = await import('path');
+        const staticPagesPath = join(process.cwd(), 'static_pages');
+        
+        if (existsSync(staticPagesPath)) {
+          const dirs = readdirSync(staticPagesPath, { withFileTypes: true })
+            .filter(d => d.isDirectory())
+            .map(d => d.name);
+            
+          for (const dir of dirs) {
+            const markerPath = join(staticPagesPath, dir, '.sp-meta.json');
+            let version = 1;
+            let checksum = '';
+            
+            if (existsSync(markerPath)) {
+              try {
+                const meta = JSON.parse(readFileSync(markerPath, 'utf-8'));
+                version = meta.version || 1;
+                checksum = meta.checksum || '';
+              } catch (e) {}
+            }
+            
+            edgeLandings.push({
+              slug: dir,
+              version,
+              checksum
+            });
+          }
+        }
+      } catch (err) {}
+    }
       
     return {
       ok: true,
@@ -37,7 +73,7 @@ export class HealthController {
           ? parseInt(process.env.SYNC_PULL_MS || '20000', 10)
           : null,
       },
-      ...(role === 'EDGE' ? { activeDownload, downloadHistory } : {}),
+      ...(role === 'EDGE' ? { activeDownload, downloadHistory, edgeLandings } : {}),
       ts: new Date().toISOString(),
     };
   }
