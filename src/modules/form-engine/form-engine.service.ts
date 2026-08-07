@@ -169,14 +169,31 @@ export class FormEngineService {
     // اول روی همین گره ذخیره می‌شه (Edge برای سرعت/در دسترس بودن)
     const edgeNodeId = process.env.EDGE_NODE_ID;
     
-    const submission = await this.prisma.formSubmission.create({
-      data: {
-        formId: form.id,
-        edgeNodeId: edgeNodeId || null,
-        payload: payload as Prisma.InputJsonValue,
-        otpStatus,
-      },
-    });
+    let submission;
+    try {
+      submission = await this.prisma.formSubmission.create({
+        data: {
+          formId: form.id,
+          edgeNodeId: edgeNodeId || null,
+          payload: payload as Prisma.InputJsonValue,
+          otpStatus,
+        },
+      });
+    } catch (err: any) {
+      // Fallback if EDGE_NODE_ID is invalid
+      if (err.code === 'P2003' || err.message?.includes('Foreign key')) {
+        submission = await this.prisma.formSubmission.create({
+          data: {
+            formId: form.id,
+            edgeNodeId: null,
+            payload: payload as Prisma.InputJsonValue,
+            otpStatus,
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
 
     // از Edge به Master همگام می‌کنیم؛ روی Master نیازی به outbox نیست
     if (isEdge()) {
