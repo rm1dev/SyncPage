@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateFormDto {
   @IsString()
@@ -38,6 +38,13 @@ export class CreateFormDto {
   @IsOptional()
   @IsString()
   otpTemplate?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(4)
+  @Max(10)
+  otpLength?: number;
+
   @IsOptional()
   @IsString()
   profileId?: string | null;
@@ -80,6 +87,13 @@ export class UpdateFormDto {
   @IsOptional()
   @IsString()
   otpTemplate?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(4)
+  @Max(10)
+  otpLength?: number;
+
   @IsOptional()
   @IsString()
   profileId?: string | null;

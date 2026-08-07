@@ -145,6 +145,12 @@
         <small style="color: var(--text-muted);">قالب تایید پترن در پنل کاوه‌نگار (متغیر <code>%token</code> استفاده می‌شود).</small>
       </div>
     </div>
+
+    <div class="form-group text-left" style="max-width: 250px;">
+      <label class="form-label" for="otpLength">تعداد ارقام کد OTP</label>
+      <input type="number" class="form-control" id="otpLength" name="otpLength" min="4" max="10" placeholder="5" value="{{#if form.otpLength}}{{form.otpLength}}{{else}}5{{/if}}" />
+      <small style="color: var(--text-muted);">بین ۴ تا ۱۰ رقم (پیش‌فرض ۵ رقم)</small>
+    </div>
     
     <div class="alert alert-ok" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--text-main); align-items: flex-start; margin-top: 0.5rem;">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" style="margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>

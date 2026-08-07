@@ -49,6 +49,7 @@ model Form {
   otpEnabled      Boolean          @default(false)
   otpTemplate     String?          // قالب پیامک (مثلا verify_code)
   otpField        String?          // نام فیلدی که شماره موبایل توش قرار میگیره (مثلا mobile)
+  otpLength       Int              @default(5)      // طول کد OTP
   
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt

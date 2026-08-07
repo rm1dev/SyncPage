@@ -112,6 +112,7 @@ export class SyncConsumerController {
             otpEnabled: payload.form.otpEnabled || false,
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
+            otpLength: payload.form.otpLength || 5,
           },
           update: {
             title: payload.form.title,
@@ -123,6 +124,7 @@ export class SyncConsumerController {
             otpEnabled: payload.form.otpEnabled || false,
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
+            otpLength: payload.form.otpLength || 5,
           },
         });
       }

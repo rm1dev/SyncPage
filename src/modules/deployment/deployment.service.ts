@@ -262,6 +262,7 @@ export class DeploymentService implements OnModuleInit {
         otpEnabled: f.otpEnabled,
         otpField: f.otpField,
         otpTemplate: f.otpTemplate,
+        otpLength: f.otpLength,
         updatedAt: f.updatedAt.toISOString(),
         idempotencyKey: `form:${f.key}:${f.updatedAt.getTime()}`,
       })),

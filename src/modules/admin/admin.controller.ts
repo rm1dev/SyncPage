@@ -275,6 +275,7 @@ export class AdminController {
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
+        otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
         profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
@@ -294,6 +295,7 @@ export class AdminController {
           otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
+          otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
         },
       });
     }
@@ -319,6 +321,7 @@ export class AdminController {
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
+        otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
         profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
@@ -339,6 +342,7 @@ export class AdminController {
           otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
+          otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
         },
         bodyJson: body.body,
         columnMappingJson: body.columnMapping,

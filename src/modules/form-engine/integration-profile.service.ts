@@ -87,6 +87,7 @@ export class IntegrationProfileService {
             otpEnabled: form.otpEnabled,
             otpField: form.otpField,
             otpTemplate: form.otpTemplate,
+            otpLength: form.otpLength,
           },
         });
       }

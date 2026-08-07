@@ -35,6 +35,7 @@ type FormManifestItem = {
   otpEnabled?: boolean | null;
   otpField?: string | null;
   otpTemplate?: string | null;
+  otpLength?: number | null;
 };
 
 type SettingManifestItem = {
@@ -178,6 +179,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpEnabled: f.otpEnabled || false,
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
+            otpLength: f.otpLength || 5,
           },
           update: {
             title: f.title,
@@ -189,6 +191,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpEnabled: f.otpEnabled || false,
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
+            otpLength: f.otpLength || 5,
           },
         });
         await this.apply.markProcessed(f.idempotencyKey);

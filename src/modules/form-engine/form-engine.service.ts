@@ -49,6 +49,7 @@ export class FormEngineService {
         otpEnabled: dto.otpEnabled || false,
         otpField: dto.otpField || 'mobile',
         otpTemplate: dto.otpTemplate || 'verify',
+        otpLength: dto.otpLength || 5,
         profileId: dto.profileId || null,
       },
     });
@@ -75,6 +76,7 @@ export class FormEngineService {
         ...(dto.otpEnabled !== undefined ? { otpEnabled: dto.otpEnabled } : {}),
         ...(dto.otpField !== undefined ? { otpField: dto.otpField || 'mobile' } : {}),
         ...(dto.otpTemplate !== undefined ? { otpTemplate: dto.otpTemplate || 'verify' } : {}),
+        ...(dto.otpLength !== undefined ? { otpLength: dto.otpLength } : {}),
         ...(dto.profileId !== undefined ? { profileId: dto.profileId || null } : {}),
       },
     });
@@ -107,8 +109,13 @@ export class FormEngineService {
     }
 
     const template = form.otpTemplate || 'verify';
-    // تولید کد ۴ یا ۵ رقمی تصادفی
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const length = form.otpLength || 5;
+    
+    // تولید کد تصادفی با طول مشخص
+    const min = Math.pow(10, length - 1);
+    const max = Math.pow(10, length) - 1;
+    const code = Math.floor(min + Math.random() * (max - min + 1)).toString();
+    
     const expiresAt = Date.now() + 2 * 60 * 1000;
 
     const cacheKey = `${key}:${mobile.trim()}`;
@@ -246,6 +253,7 @@ export class FormEngineService {
     otpEnabled?: boolean;
     otpField?: string | null;
     otpTemplate?: string | null;
+    otpLength?: number;
     updatedAt: Date;
   }) {
     await this.outbox.enqueueFormSync({
@@ -264,6 +272,7 @@ export class FormEngineService {
         otpEnabled: form.otpEnabled,
         otpField: form.otpField,
         otpTemplate: form.otpTemplate,
+        otpLength: form.otpLength,
       },
     });
   }

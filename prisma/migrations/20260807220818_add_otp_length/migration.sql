@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Form" ADD COLUMN     "otpLength" INTEGER NOT NULL DEFAULT 5;

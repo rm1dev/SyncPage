@@ -29,6 +29,7 @@ export interface FormSyncPayload {
     otpEnabled?: boolean | null;
     otpField?: string | null;
     otpTemplate?: string | null;
+    otpLength?: number | null;
   };
 }
 
