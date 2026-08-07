@@ -269,13 +269,6 @@ export class NodesService {
             activeDownload: data.activeDownload,
             downloadHistory: data.downloadHistory,
           };
-              ? {
-                  ok: !!rmq.ok,
-                  queue: rmq.queue ? String(rmq.queue) : undefined,
-                  error: rmq.error ? String(rmq.error) : undefined,
-                }
-              : undefined,
-          };
         }
       } catch {
         /* آدرس بعدی */
