@@ -1,7 +1,7 @@
 <header class="page-header">
   <div class="page-header-title">
     <h1>{{#if form.id}}ویرایش فرم: {{form.title}}{{else}}ایجاد فرم جدید{{/if}}</h1>
-    <span class="subtitle">تنظیمات متاداده و ساختار فیلدهای فرم به صورت JSON</span>
+    <span class="subtitle">تنظیمات فرم، فیلدها و اتصالات خارجی</span>
   </div>
   <a href="/spadmin" class="btn btn-secondary">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -16,168 +16,240 @@
   </div>
 {{/if}}
 
-<form method="post" action="{{#if form.id}}/spadmin/forms/{{form.id}}{{else}}/spadmin/forms{{/if}}" class="content-wrapper">
-  <div class="section-header">
-    <span>۱. تنظیمات عمومی فرم</span>
+<form method="post" action="{{#if form.id}}/spadmin/forms/{{form.id}}{{else}}/spadmin/forms{{/if}}" id="form-edit-form">
+
+  {{!-- Tab Navigation --}}
+  <div class="content-wrapper" style="padding-bottom: 0;">
+    <nav class="form-tabs" id="form-tabs">
+      <button type="button" class="form-tab-btn active" data-tab="tab-general">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        عمومی
+      </button>
+      <button type="button" class="form-tab-btn" data-tab="tab-fields">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        فیلدها
+        <span class="tab-badge" id="field-count-badge">0</span>
+      </button>
+      <button type="button" class="form-tab-btn" data-tab="tab-integrations">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        اتصالات
+      </button>
+      <button type="button" class="form-tab-btn" data-tab="tab-otp">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        OTP پیامکی
+      </button>
+      <button type="button" class="form-tab-btn" data-tab="tab-snippets">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        کد لندینگ
+      </button>
+    </nav>
   </div>
 
-  <div class="grid-2">
-    <div class="form-group text-left">
-      <label class="form-label" for="title">عنوان فرم</label>
-      <input class="form-control" id="title" name="title" placeholder="مثلاً: فرم ثبت نام مشتریان" required value="{{form.title}}" />
-    </div>
+  {{!-- ═══════════ TAB 1: General ═══════════ --}}
+  <div class="form-tab-panel active" id="tab-general">
+    <div class="content-wrapper">
+      <div class="section-header"><span>تنظیمات عمومی فرم</span></div>
 
-    <div class="form-group text-left">
-      <label class="form-label" for="key">کلید یکتا (برای فراخوانی API)</label>
-      <input class="form-control" id="key" name="key" dir="ltr" placeholder="مثلاً: user_signup_form" required value="{{form.key}}" {{#if form.id}}readonly style="opacity: 0.7;"{{/if}} />
-    </div>
-  </div>
-
-  <div class="form-group text-left">
-    <label class="form-label" for="slug">اسلاگ صفحه (Slug)</label>
-    <input class="form-control" id="slug" name="slug" placeholder="مثلاً: signup" required value="{{form.slug}}" />
-  </div>
-
-  <div class="section-header mt-2">
-    <span>۲. اتصال به وب‌هوک و گوگل شیت (اختیاری)</span>
-  </div>
-
-  <div class="form-group text-left" style="margin-bottom: 1.5rem; background: rgba(0,0,0,0.03); padding: 1rem; border-radius: 8px;">
-    <label class="form-label" for="profileId">استفاده از پروفایل اتصال از پیش تعریف شده</label>
-    <select class="form-control" id="profileId" name="profileId" style="max-width: 400px;" onchange="handleProfileChange(this)">
-      <option value="">بدون پروفایل (تنظیمات دستی پایین)</option>
-      {{#each profiles}}
-        <option value="{{id}}" 
-          data-webhook="{{webhookUrl}}" 
-          data-sheet="{{googleSheetUrl}}" 
-          data-meta="{{#if googleSheetMeta}}{{json googleSheetMeta}}{{/if}}"
-          {{#if (eq id ../form.profileId)}}selected{{/if}}
-        >{{name}}</option>
-      {{/each}}
-    </select>
-    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
-      در صورت انتخاب پروفایل، مقادیر زیر بر اساس آن به صورت خودکار پُر خواهند شد و هر تغییری در پروفایل، باعث تغییر در تمامی فرم‌های متصل می‌شود.
-      برای ساخت پروفایل جدید به بخش <a href="/spadmin/profiles" style="color: var(--color-primary);">مدیریت پروفایل‌ها</a> مراجعه کنید.
-    </small>
-  </div>
-
-  <div id="integration-fields">
-    <div class="form-group text-left">
-      <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
-      <input class="form-control" id="webhookUrl" name="webhookUrl" dir="ltr" placeholder="http://bc.teleskp.ir/gateways/store?email=$email$&body=$text$" value="{{form.webhookUrl}}" />
-      <small style="color: var(--text-muted);">
-        می‌توانید برای جایگذاری داینامیک مقادیر در کوئری‌استرینگ، از نام فیلد داخل <code>$نام‌فیلد$</code> استفاده کنید (مثلا <code>$mobile$</code>). در صورت وجود، جایگزین شده و درخواست با بدنه کامل JSON پست می‌شود.
-      </small>
-    </div>
-
-    <div class="grid-2">
-      <div class="form-group text-left">
-        <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
-        <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="{{form.googleSheetUrl}}" />
+      <div class="grid-2">
+        <div class="form-group text-left">
+          <label class="form-label" for="title">عنوان فرم</label>
+          <input class="form-control" id="title" name="title" placeholder="مثلاً: فرم ثبت نام مشتریان" required value="{{form.title}}" />
+        </div>
+        <div class="form-group text-left">
+          <label class="form-label" for="key">کلید یکتا (برای فراخوانی API)</label>
+          <input class="form-control" id="key" name="key" dir="ltr" placeholder="مثلاً: user_signup_form" required value="{{form.key}}" {{#if form.id}}readonly style="opacity: 0.7;"{{/if}} />
+        </div>
       </div>
 
       <div class="form-group text-left">
-        <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
-        <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
-      </div>
-    </div>
-
-    <div class="form-group text-left" dir="ltr">
-      <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
-      <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" dir="ltr" style="font-family: monospace;" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
-      <small style="color: var(--text-muted); direction: rtl; display: block;">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
-    </div>
-  </div>
-
-  <script>
-    function handleProfileChange(select) {
-      const integrationFields = document.getElementById('integration-fields');
-      if (select.value) {
-        integrationFields.style.opacity = '0.5';
-        integrationFields.style.pointerEvents = 'none';
-        
-        const option = select.options[select.selectedIndex];
-        document.getElementById('webhookUrl').value = option.getAttribute('data-webhook') || '';
-        document.getElementById('googleSheetUrl').value = option.getAttribute('data-sheet') || '';
-        
-        const metaStr = option.getAttribute('data-meta');
-        if (metaStr) {
-          try {
-            const meta = JSON.parse(metaStr);
-            document.getElementById('startRow').value = meta.startRow || 2;
-            if (meta.columns) {
-              document.getElementById('columnMapping').value = JSON.stringify(meta.columns, null, 2);
-            }
-          } catch(e) {}
-        }
-      } else {
-        integrationFields.style.opacity = '1';
-        integrationFields.style.pointerEvents = 'auto';
-      }
-    }
-    // اجرا در هنگام لود برای حالت اولیه
-    window.addEventListener('DOMContentLoaded', () => {
-      const select = document.getElementById('profileId');
-      if (select && select.value) handleProfileChange(select);
-    });
-  </script>
-
-  <div class="section-header mt-2">
-    <span>۳. اعتبارسنجی پیامکی (OTP) با کاوه‌نگار</span>
-  </div>
-
-  <div class="form-group text-left" style="display: flex; align-items: center; gap: 0.5rem; flex-direction: row-reverse; justify-content: flex-end;">
-    <label class="form-label" for="otpEnabled" style="margin: 0; cursor: pointer;">فعال‌سازی ارسال پیامک OTP</label>
-    <input type="checkbox" id="otpEnabled" name="otpEnabled" {{#if form.otpEnabled}}checked{{/if}} style="width: 18px; height: 18px; cursor: pointer;" onchange="document.getElementById('otp-settings').style.display = this.checked ? 'block' : 'none'; refreshLandingSnippets();" />
-  </div>
-
-  <div id="otp-settings" style="display: {{#if form.otpEnabled}}block{{else}}none{{/if}}; border-right: 2px solid var(--color-primary); padding-right: 1rem; margin-bottom: 1rem;">
-    <div class="grid-2">
-      <div class="form-group text-left">
-        <label class="form-label" for="otpField">نام فیلد موبایل (جهت دریافت کد)</label>
-        <input class="form-control" id="otpField" name="otpField" placeholder="mobile" value="{{form.otpField}}" onchange="refreshLandingSnippets()" />
-        <small style="color: var(--text-muted);">نام فیلدی که شماره تماس کاربر در آن قرار دارد.</small>
-      </div>
-
-      <div class="form-group text-left">
-        <label class="form-label" for="otpTemplate">نام قالب در کاوه‌نگار (Lookup Template)</label>
-        <input class="form-control" id="otpTemplate" name="otpTemplate" placeholder="verify" value="{{form.otpTemplate}}" />
-        <small style="color: var(--text-muted);">قالب تایید پترن در پنل کاوه‌نگار (متغیر <code>%token</code> استفاده می‌شود).</small>
-      </div>
-    </div>
-
-    <div class="form-group text-left" style="max-width: 250px;">
-      <label class="form-label" for="otpLength">تعداد ارقام کد OTP</label>
-      <input type="number" class="form-control" id="otpLength" name="otpLength" min="4" max="10" placeholder="5" value="{{#if form.otpLength}}{{form.otpLength}}{{else}}5{{/if}}" />
-      <small style="color: var(--text-muted);">بین ۴ تا ۱۰ رقم (پیش‌فرض ۵ رقم)</small>
-    </div>
-    
-    <div class="alert alert-ok" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--text-main); align-items: flex-start; margin-top: 0.5rem;">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" style="margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <div>
-        <strong style="display: block; margin-bottom: 0.35rem; color: #818cf8;">نحوه استفاده از OTP:</strong>
-        <p style="font-size: 0.85rem; margin: 0; line-height: 1.6;">
-          کافیست تنظیمات بالا را اعمال کنید. <strong>سیستم به صورت خودکار در بخش «کد آماده اسکریپت لندینگ» (پایین همین صفحه)</strong> کدهای لازم برای دریافت پیامک و نمایش پاپ‌آپ گرفتن کد تایید (<code>prompt</code>) را تولید می‌کند که می‌توانید به راحتی داخل لندینگ خود کپی کنید.
-        </p>
+        <label class="form-label" for="slug">اسلاگ صفحه (Slug)</label>
+        <input class="form-control" id="slug" name="slug" placeholder="مثلاً: signup" required value="{{form.slug}}" />
       </div>
     </div>
   </div>
 
-  <div class="section-header mt-2">
-    <span>۴. ساختار فیلدها (فرمت JSON)</span>
-    <button type="button" id="format-json-btn" class="btn btn-subtle">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
-      <span>مرتب‌سازی و اعتبارسنجی JSON</span>
-    </button>
-  </div>
-  <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">
-    آرایه‌ای از اشیاء فیلد شامل <code>type</code>، <code>name</code>، <code>label</code>، <code>required</code> و <code>options</code>
-  </p>
+  {{!-- ═══════════ TAB 2: Fields (Visual Builder) ═══════════ --}}
+  <div class="form-tab-panel" id="tab-fields">
+    <div class="content-wrapper">
+      <div class="section-header">
+        <span>ساختار فیلدهای فرم</span>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <label class="toggle-label" style="font-size: 0.82rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+            <input type="checkbox" id="json-raw-toggle" style="width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer;" />
+            ویرایش JSON خام
+          </label>
+        </div>
+      </div>
 
-  <div class="form-group text-left" dir="ltr" style="position: relative;">
-    <textarea class="form-control" id="body" name="body" rows="14" required dir="ltr" style="font-family: monospace;">{{bodyJson}}</textarea>
+      {{!-- Visual builder --}}
+      <div id="field-builder-view" class="field-builder">
+        <div class="field-list" id="field-list">
+          {{!-- rows rendered by JS from bodyJson --}}
+        </div>
+        <button type="button" class="field-add-row" id="add-field-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          افزودن فیلد جدید
+        </button>
+      </div>
+
+      {{!-- JSON raw editor (hidden by default) --}}
+      <div id="json-raw-view" style="display: none;">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+          <button type="button" id="format-json-btn" class="btn btn-subtle">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+            <span>مرتب‌سازی JSON</span>
+          </button>
+        </div>
+        <div class="form-group text-left" dir="ltr" style="position: relative;">
+          <textarea class="form-control" id="body" name="body" rows="14" required dir="ltr" style="font-family: monospace;">{{bodyJson}}</textarea>
+        </div>
+      </div>
+
+      {{!-- Hidden textarea synced from builder --}}
+      <textarea id="body-hidden" name="body" style="display:none;" required>{{bodyJson}}</textarea>
+    </div>
   </div>
 
+  {{!-- ═══════════ TAB 3: Integrations ═══════════ --}}
+  <div class="form-tab-panel" id="tab-integrations">
+    <div class="content-wrapper">
+      <div class="section-header"><span>اتصال به وب‌هوک و گوگل شیت</span></div>
+
+      <div class="form-group text-left" style="margin-bottom: 1.5rem; background: rgba(0,0,0,0.03); padding: 1rem; border-radius: 8px;">
+        <label class="form-label" for="profileId">استفاده از پروفایل اتصال از پیش تعریف شده</label>
+        <select class="form-control" id="profileId" name="profileId" style="max-width: 400px;" onchange="handleProfileChange(this)">
+          <option value="">بدون پروفایل (تنظیمات دستی)</option>
+          {{#each profiles}}
+            <option value="{{id}}"
+              data-webhook="{{webhookUrl}}"
+              data-sheet="{{googleSheetUrl}}"
+              data-meta="{{#if googleSheetMeta}}{{json googleSheetMeta}}{{/if}}"
+              {{#if (eq id ../form.profileId)}}selected{{/if}}
+            >{{name}}</option>
+          {{/each}}
+        </select>
+        <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+          انتخاب پروفایل، مقادیر زیر را به صورت خودکار پر می‌کند.
+          <a href="/spadmin/profiles" style="color: var(--accent-primary);">مدیریت پروفایل‌ها</a>
+        </small>
+      </div>
+
+      <div id="integration-fields">
+        <div class="form-group text-left">
+          <label class="form-label" for="webhookUrl">آدرس وب‌هوک (Webhook URL)</label>
+          <input class="form-control" id="webhookUrl" name="webhookUrl" dir="ltr" placeholder="http://example.com/hook?email=$email$&body=$text$" value="{{form.webhookUrl}}" />
+          <small style="color: var(--text-muted);">
+            جایگذاری داینامیک با <code>$نام‌فیلد$</code> (مثلا <code>$mobile$</code>).
+          </small>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group text-left">
+            <label class="form-label" for="googleSheetUrl">آدرس گوگل شیت (Google Apps Script Webhook URL)</label>
+            <input class="form-control" id="googleSheetUrl" name="googleSheetUrl" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" value="{{form.googleSheetUrl}}" />
+          </div>
+          <div class="form-group text-left">
+            <label class="form-label" for="startRow">شروع نوشتن از سطر شماره (Start Row)</label>
+            <input type="number" class="form-control" id="startRow" name="startRow" min="1" placeholder="2" value="{{startRow}}" />
+          </div>
+        </div>
+
+        <div class="form-group text-left" dir="ltr">
+          <label class="form-label" for="columnMapping">نگاشت فیلدها به ستون‌ها (JSON)</label>
+          <textarea class="form-control" id="columnMapping" name="columnMapping" rows="3" dir="ltr" style="font-family: monospace;" placeholder='{"fullName": "A", "email": "B"}'>{{columnMappingJson}}</textarea>
+          <small style="color: var(--text-muted); direction: rtl; display: block;">مشخص کنید هر فیلد فرم در کدام ستون (A, B, C, ...) گوگل شیت درج شود.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{!-- ═══════════ TAB 4: OTP ═══════════ --}}
+  <div class="form-tab-panel" id="tab-otp">
+    <div class="content-wrapper">
+      <div class="section-header"><span>اعتبارسنجی پیامکی (OTP) با کاوه‌نگار</span></div>
+
+      <div class="form-group text-left" style="display: flex; align-items: center; gap: 0.5rem; flex-direction: row-reverse; justify-content: flex-end;">
+        <label class="form-label" for="otpEnabled" style="margin: 0; cursor: pointer;">فعال‌سازی ارسال پیامک OTP</label>
+        <input type="checkbox" id="otpEnabled" name="otpEnabled" {{#if form.otpEnabled}}checked{{/if}} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);" />
+      </div>
+
+      <div id="otp-settings" style="display: {{#if form.otpEnabled}}block{{else}}none{{/if}}; border-right: 2px solid var(--accent-primary); padding-right: 1rem; margin-bottom: 1rem;">
+        <div class="grid-2">
+          <div class="form-group text-left">
+            <label class="form-label" for="otpField">نام فیلد موبایل (جهت دریافت کد)</label>
+            <input class="form-control" id="otpField" name="otpField" placeholder="mobile" value="{{form.otpField}}" />
+            <small style="color: var(--text-muted);">نام فیلدی که شماره تماس کاربر در آن قرار دارد.</small>
+          </div>
+          <div class="form-group text-left">
+            <label class="form-label" for="otpTemplate">نام قالب در کاوه‌نگار (Lookup Template)</label>
+            <input class="form-control" id="otpTemplate" name="otpTemplate" placeholder="verify" value="{{form.otpTemplate}}" />
+            <small style="color: var(--text-muted);">قالب تایید پترن در پنل کاوه‌نگار (متغیر <code>%token</code> استفاده می‌شود).</small>
+          </div>
+        </div>
+
+        <div class="form-group text-left" style="max-width: 250px;">
+          <label class="form-label" for="otpLength">تعداد ارقام کد OTP</label>
+          <input type="number" class="form-control" id="otpLength" name="otpLength" min="4" max="10" placeholder="5" value="{{#if form.otpLength}}{{form.otpLength}}{{else}}5{{/if}}" />
+          <small style="color: var(--text-muted);">بین ۴ تا ۱۰ رقم (پیش‌فرض ۵ رقم)</small>
+        </div>
+
+        <div class="alert alert-ok" style="background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--text-main); align-items: flex-start; margin-top: 0.5rem;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" style="margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div>
+            <strong style="display: block; margin-bottom: 0.35rem; color: #818cf8;">نحوه استفاده از OTP:</strong>
+            <p style="font-size: 0.85rem; margin: 0; line-height: 1.6;">
+              تنظیمات بالا را اعمال کنید. سیستم در تب «کد لندینگ» کدهای لازم برای OTP را تولید می‌کند.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{!-- ═══════════ TAB 5: Landing Snippets ═══════════ --}}
+  <div class="form-tab-panel" id="tab-snippets">
+    <div class="content-wrapper" id="landing-snippets" data-form-snippets>
+      <div class="section-header">
+        <span>کد آماده برای لندینگ</span>
+        <button type="button" id="refresh-snippets-btn" class="btn btn-subtle">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>بروزرسانی</span>
+        </button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
+        HTML و اسکریپت را کپی کنید و داخل <code>index.html</code> لندینگ بگذارید.
+        سابمیشن می‌رود به <code>/api/forms/&lt;key&gt;/submit</code> روی Edge.
+      </p>
+
+      <div class="snippet-block">
+        <div class="section-header" style="margin-bottom: 0.75rem;">
+          <span>فرم (HTML)</span>
+          <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-html" data-copy-toast="HTML فرم کپی شد.">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>کپی HTML</span>
+          </button>
+        </div>
+        <div class="install-cmd-box snippet-code-box">
+          <pre id="snippet-html" class="snippet-code" dir="ltr"></pre>
+        </div>
+      </div>
+
+      <div class="snippet-block mt-2">
+        <div class="section-header" style="margin-bottom: 0.75rem;">
+          <span>اسکریپت (JS)</span>
+          <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-script" data-copy-toast="اسکریپت کپی شد.">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>کپی اسکریپت</span>
+          </button>
+        </div>
+        <div class="install-cmd-box snippet-code-box">
+          <pre id="snippet-script" class="snippet-code" dir="ltr"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Save / Cancel --}}
   <div class="text-left mt-2" style="display: flex; gap: 1rem;">
     <button type="submit" class="btn btn-primary">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -187,43 +259,7 @@
   </div>
 </form>
 
-{{!-- اسنیپت‌های آماده برای چسبوندن داخل لندینگ --}}
-<div class="content-wrapper mt-3" id="landing-snippets" data-form-snippets>
-  <div class="section-header">
-    <span>۳. کد آماده برای لندینگ</span>
-    <button type="button" id="refresh-snippets-btn" class="btn btn-subtle">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      <span>بروزرسانی از فیلدها</span>
-    </button>
-  </div>
-  <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
-    HTML و اسکریپت را جداگانه کپی کنید و داخل <code>index.html</code> لندینگ بگذارید.
-    سابمیشن می‌رود به <code>/api/forms/&lt;key&gt;/submit</code> روی Edge.
-  </p>
-
-  <div class="snippet-block">
-    <div class="section-header" style="margin-bottom: 0.75rem;">
-      <span>فرم (HTML)</span>
-      <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-html" data-copy-toast="HTML فرم کپی شد.">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span>کپی HTML</span>
-      </button>
-    </div>
-    <div class="install-cmd-box snippet-code-box">
-      <pre id="snippet-html" class="snippet-code" dir="ltr"></pre>
-    </div>
-  </div>
-
-  <div class="snippet-block mt-2">
-    <div class="section-header" style="margin-bottom: 0.75rem;">
-      <span>اسکریپت (JS)</span>
-      <button type="button" class="btn btn-secondary btn-copy" data-copy="#snippet-script" data-copy-toast="اسکریپت کپی شد.">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <span>کپی اسکریپت</span>
-      </button>
-    </div>
-    <div class="install-cmd-box snippet-code-box">
-      <pre id="snippet-script" class="snippet-code" dir="ltr"></pre>
-    </div>
-  </div>
-</div>
+{{!-- Seed the builder with existing JSON --}}
+<script>
+  try { window.__FORM_BODY_JSON = JSON.parse({{{json bodyJson}}}); } catch(e) { window.__FORM_BODY_JSON = []; }
+</script>

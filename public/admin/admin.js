@@ -66,32 +66,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 3. JSON Formatter & Validator in Form Editor
-  const formatJsonBtn = document.getElementById('format-json-btn');
-  const jsonTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
-
-  if (formatJsonBtn && jsonTextarea) {
-    formatJsonBtn.addEventListener('click', () => {
-      try {
-        const parsed = JSON.parse(jsonTextarea.value);
-        jsonTextarea.value = JSON.stringify(parsed, null, 2);
-        showToast('فرمت کد JSON با موفقیت مرتب شد.', 'success');
-        refreshLandingSnippets();
-      } catch (err) {
-        showToast('خطا در خواندن JSON: فرمت وارد شده معتبر نیست!', 'danger');
-      }
-    });
-  }
-
-  // 4. کپی متن از data-copy (کامند نصب، اسنیپت فرم و …)
+  // 3. کپی متن از data-copy
   document.querySelectorAll('[data-copy]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const sel = btn.getAttribute('data-copy');
       const el = sel ? document.querySelector(sel) : null;
       const text = el?.textContent?.trim() || '';
       if (!text) return;
-      const okMsg =
-        btn.getAttribute('data-copy-toast') || 'متن کپی شد.';
+      const okMsg = btn.getAttribute('data-copy-toast') || 'متن کپی شد.';
       try {
         await navigator.clipboard.writeText(text);
         showToast(okMsg, 'success');
@@ -101,7 +83,251 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 5. اسنیپت HTML + اسکریپت برای لندینگ (جدا از هم)
+  // ===================================================================
+  //  FORM-EDIT: Tab System
+  // ===================================================================
+  const tabContainer = document.getElementById('form-tabs');
+  if (tabContainer) {
+    tabContainer.addEventListener('click', (e) => {
+      const btn = /** @type {HTMLElement} */ (e.target).closest('.form-tab-btn');
+      if (!btn) return;
+      const targetId = btn.getAttribute('data-tab');
+      if (!targetId) return;
+
+      // deactivate all
+      tabContainer.querySelectorAll('.form-tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.form-tab-panel').forEach((p) => p.classList.remove('active'));
+
+      // activate clicked
+      btn.classList.add('active');
+      const panel = document.getElementById(targetId);
+      if (panel) panel.classList.add('active');
+
+      // refresh snippets when switching to that tab
+      if (targetId === 'tab-snippets') refreshLandingSnippets();
+    });
+  }
+
+  // ===================================================================
+  //  FORM-EDIT: Profile change handler
+  // ===================================================================
+  const profileSelect = document.getElementById('profileId');
+  if (profileSelect) {
+    profileSelect.addEventListener('change', function () { handleProfileChange(this); });
+    if (/** @type {HTMLSelectElement} */ (profileSelect).value) {
+      handleProfileChange(/** @type {HTMLSelectElement} */ (profileSelect));
+    }
+  }
+
+  // ===================================================================
+  //  FORM-EDIT: OTP toggle
+  // ===================================================================
+  const otpCheckbox = document.getElementById('otpEnabled');
+  if (otpCheckbox) {
+    otpCheckbox.addEventListener('change', function () {
+      const settings = document.getElementById('otp-settings');
+      if (settings) settings.style.display = /** @type {HTMLInputElement} */ (this).checked ? 'block' : 'none';
+    });
+  }
+
+  // ===================================================================
+  //  FORM-EDIT: Visual Field Builder
+  // ===================================================================
+  const fieldList = document.getElementById('field-list');
+  const addFieldBtn = document.getElementById('add-field-btn');
+  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
+  const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
+  const jsonRawToggle = /** @type {HTMLInputElement} */ (document.getElementById('json-raw-toggle'));
+  const builderView = document.getElementById('field-builder-view');
+  const jsonRawView = document.getElementById('json-raw-view');
+
+  if (fieldList) {
+    // Initialize from seed data
+    const seedFields = window.__FORM_BODY_JSON || [];
+    if (Array.isArray(seedFields)) {
+      seedFields.forEach((f) => addFieldRow(f));
+    }
+    updateFieldCountBadge();
+    syncBuilderToHidden();
+
+    // Add field button
+    if (addFieldBtn) {
+      addFieldBtn.addEventListener('click', () => {
+        addFieldRow({ type: 'text', name: '', label: '', required: false });
+        updateFieldCountBadge();
+        syncBuilderToHidden();
+        // focus the name input of the new row
+        const rows = fieldList.querySelectorAll('.field-row');
+        const last = rows[rows.length - 1];
+        if (last) {
+          const nameInput = last.querySelector('[data-field="name"]');
+          if (nameInput) /** @type {HTMLInputElement} */ (nameInput).focus();
+        }
+      });
+    }
+
+    // JSON raw toggle
+    if (jsonRawToggle && builderView && jsonRawView) {
+      jsonRawToggle.addEventListener('change', () => {
+        if (jsonRawToggle.checked) {
+          // switching to raw: sync builder → textarea
+          syncBuilderToTextarea();
+          builderView.style.display = 'none';
+          jsonRawView.style.display = 'block';
+          // enable the visible textarea, disable hidden
+          if (bodyTextarea) bodyTextarea.removeAttribute('disabled');
+          if (bodyHidden) bodyHidden.setAttribute('disabled', 'true');
+        } else {
+          // switching to builder: parse textarea → rebuild
+          if (bodyTextarea) {
+            try {
+              const parsed = JSON.parse(bodyTextarea.value);
+              if (Array.isArray(parsed)) {
+                fieldList.innerHTML = '';
+                parsed.forEach((f) => addFieldRow(f));
+                updateFieldCountBadge();
+              }
+            } catch {
+              showToast('JSON نامعتبر — ابتدا فرمت را اصلاح کنید.', 'danger');
+              jsonRawToggle.checked = true;
+              return;
+            }
+          }
+          builderView.style.display = 'block';
+          jsonRawView.style.display = 'none';
+          if (bodyTextarea) bodyTextarea.setAttribute('disabled', 'true');
+          if (bodyHidden) bodyHidden.removeAttribute('disabled');
+          syncBuilderToHidden();
+        }
+      });
+      // initial state: builder active, raw hidden textarea disabled
+      if (bodyTextarea) bodyTextarea.setAttribute('disabled', 'true');
+      if (bodyHidden) bodyHidden.removeAttribute('disabled');
+    }
+
+    // JSON format button
+    const formatJsonBtn = document.getElementById('format-json-btn');
+    if (formatJsonBtn && bodyTextarea) {
+      formatJsonBtn.addEventListener('click', () => {
+        try {
+          const parsed = JSON.parse(bodyTextarea.value);
+          bodyTextarea.value = JSON.stringify(parsed, null, 2);
+          showToast('فرمت JSON مرتب شد.', 'success');
+        } catch {
+          showToast('JSON نامعتبر!', 'danger');
+        }
+      });
+    }
+
+    // Form submit: sync builder to hidden before submit
+    const formEl = document.getElementById('form-edit-form');
+    if (formEl) {
+      formEl.addEventListener('submit', () => {
+        if (jsonRawToggle && jsonRawToggle.checked) {
+          // raw mode: copy visible textarea to hidden
+          if (bodyHidden && bodyTextarea) {
+            bodyHidden.value = bodyTextarea.value;
+            bodyHidden.removeAttribute('disabled');
+          }
+          if (bodyTextarea) bodyTextarea.setAttribute('disabled', 'true');
+        } else {
+          syncBuilderToHidden();
+          if (bodyHidden) bodyHidden.removeAttribute('disabled');
+        }
+      });
+    }
+
+    // Delegate events on field-list
+    fieldList.addEventListener('input', () => {
+      syncBuilderToHidden();
+    });
+    fieldList.addEventListener('change', () => {
+      syncBuilderToHidden();
+      updateFieldCountBadge();
+    });
+
+    // Drag & drop reorder
+    let dragSrcRow = null;
+    fieldList.addEventListener('dragstart', (e) => {
+      const row = /** @type {HTMLElement} */ (e.target).closest('.field-row');
+      if (!row) return;
+      dragSrcRow = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    fieldList.addEventListener('dragend', (e) => {
+      const row = /** @type {HTMLElement} */ (e.target).closest('.field-row');
+      if (row) row.classList.remove('dragging');
+      fieldList.querySelectorAll('.field-row').forEach((r) => {
+        r.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      dragSrcRow = null;
+      syncBuilderToHidden();
+    });
+    fieldList.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const row = /** @type {HTMLElement} */ (e.target).closest('.field-row');
+      if (!row || row === dragSrcRow) return;
+      fieldList.querySelectorAll('.field-row').forEach((r) => {
+        r.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        row.classList.add('drag-over-above');
+      } else {
+        row.classList.add('drag-over-below');
+      }
+    });
+    fieldList.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const row = /** @type {HTMLElement} */ (e.target).closest('.field-row');
+      if (!row || !dragSrcRow || row === dragSrcRow) return;
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        fieldList.insertBefore(dragSrcRow, row);
+      } else {
+        fieldList.insertBefore(dragSrcRow, row.nextSibling);
+      }
+    });
+
+    // Remove field (delegated)
+    fieldList.addEventListener('click', (e) => {
+      const removeBtn = /** @type {HTMLElement} */ (e.target).closest('.field-remove-btn');
+      if (removeBtn) {
+        const row = removeBtn.closest('.field-row');
+        if (row) {
+          row.remove();
+          updateFieldCountBadge();
+          syncBuilderToHidden();
+        }
+        return;
+      }
+      // Options toggle
+      const optionsBtn = /** @type {HTMLElement} */ (e.target).closest('.field-options-btn');
+      if (optionsBtn) {
+        const row = optionsBtn.closest('.field-row');
+        if (!row) return;
+        let panel = row.querySelector('.field-options-panel');
+        if (panel) {
+          panel.remove();
+          optionsBtn.classList.remove('has-options');
+        } else {
+          panel = createOptionsPanel(row);
+          row.appendChild(panel);
+          optionsBtn.classList.add('has-options');
+          const input = panel.querySelector('input');
+          if (input) input.focus();
+        }
+      }
+    });
+  }
+
+  // ===================================================================
+  //  FORM-EDIT: Landing Snippets
+  // ===================================================================
   const snippetsRoot = document.querySelector('[data-form-snippets]');
   if (snippetsRoot) {
     const refreshBtn = document.getElementById('refresh-snippets-btn');
@@ -112,32 +338,274 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('اسنیپت‌ها بروزرسانی شد.', 'success');
     });
     keyInput?.addEventListener('input', refreshLandingSnippets);
-    jsonTextarea?.addEventListener('change', refreshLandingSnippets);
   }
 });
 
+// =====================================================================
+//  Field Builder Helpers
+// =====================================================================
+
+const FIELD_TYPES = [
+  { value: 'text', label: 'متن (text)' },
+  { value: 'email', label: 'ایمیل (email)' },
+  { value: 'tel', label: 'تلفن (tel)' },
+  { value: 'number', label: 'عدد (number)' },
+  { value: 'textarea', label: 'متن بلند (textarea)' },
+  { value: 'select', label: 'لیست انتخاب (select)' },
+  { value: 'checkbox', label: 'چک‌باکس (checkbox)' },
+  { value: 'date', label: 'تاریخ (date)' },
+  { value: 'url', label: 'لینک (url)' },
+  { value: 'password', label: 'رمز عبور (password)' },
+  { value: 'hidden', label: 'مخفی (hidden)' },
+];
+
 /**
- * از فیلدهای JSON صفحه، HTML فرم و اسکریپت سابمیشن رو می‌سازه
+ * @param {Record<string, unknown>} field
  */
+function addFieldRow(field) {
+  const fieldList = document.getElementById('field-list');
+  if (!fieldList) return;
+
+  const row = document.createElement('div');
+  row.className = 'field-row';
+  row.draggable = true;
+
+  const type = String(field.type || 'text');
+  const name = String(field.name || '');
+  const label = String(field.label || '');
+  const required = !!field.required;
+  const options = Array.isArray(field.options) ? field.options : [];
+  const hasOptions = type === 'select' && options.length > 0;
+
+  // drag handle
+  const dragHandle = document.createElement('div');
+  dragHandle.className = 'drag-handle';
+  dragHandle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+
+  // name input
+  const nameInput = document.createElement('input');
+  nameInput.className = 'field-input';
+  nameInput.type = 'text';
+  nameInput.placeholder = 'نام فیلد (name)';
+  nameInput.value = name;
+  nameInput.setAttribute('data-field', 'name');
+  nameInput.dir = 'ltr';
+
+  // type select
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'field-input';
+  typeSelect.setAttribute('data-field', 'type');
+  FIELD_TYPES.forEach((ft) => {
+    const opt = document.createElement('option');
+    opt.value = ft.value;
+    opt.textContent = ft.label;
+    if (ft.value === type) opt.selected = true;
+    typeSelect.appendChild(opt);
+  });
+
+  // required toggle
+  const reqLabel = document.createElement('label');
+  reqLabel.className = 'field-req-toggle';
+  const reqCb = document.createElement('input');
+  reqCb.type = 'checkbox';
+  reqCb.checked = required;
+  reqCb.setAttribute('data-field', 'required');
+  reqLabel.appendChild(reqCb);
+  reqLabel.appendChild(document.createTextNode('اجباری'));
+
+  // options button (for select)
+  const optionsBtn = document.createElement('button');
+  optionsBtn.type = 'button';
+  optionsBtn.className = 'field-options-btn' + (hasOptions ? ' has-options' : '');
+  optionsBtn.title = 'تنظیم گزینه‌ها (options)';
+  optionsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
+  // remove button
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'field-remove-btn';
+  removeBtn.title = 'حذف فیلد';
+  removeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+  row.appendChild(dragHandle);
+  row.appendChild(nameInput);
+  row.appendChild(typeSelect);
+  row.appendChild(reqLabel);
+  row.appendChild(optionsBtn);
+  row.appendChild(removeBtn);
+
+  // store options data on row element
+  row.__fieldOptions = options;
+  row.__fieldLabel = label;
+
+  // label stored as data attribute for builder → JSON sync
+  const labelInput = document.createElement('input');
+  labelInput.type = 'hidden';
+  labelInput.value = label;
+  labelInput.setAttribute('data-field', 'label');
+  row.appendChild(labelInput);
+
+  // if options exist and type is select, auto-open panel
+  if (hasOptions) {
+    const panel = createOptionsPanel(row);
+    row.appendChild(panel);
+  }
+
+  fieldList.appendChild(row);
+}
+
+/**
+ * Create inline options editing panel
+ * @param {HTMLElement} row
+ * @returns {HTMLElement}
+ */
+function createOptionsPanel(row) {
+  const panel = document.createElement('div');
+  panel.className = 'field-options-panel';
+
+  const currentOptions = row.__fieldOptions || [];
+  const optStr = currentOptions.map((o) => {
+    if (o && typeof o === 'object') return String(o.label || o.value || '');
+    return String(o);
+  }).join(', ');
+
+  const labelEl = document.createElement('label');
+  labelEl.textContent = 'لیبل (نمایش فارسی فیلد)';
+  const labelInput = document.createElement('input');
+  labelInput.type = 'text';
+  labelInput.placeholder = 'مثلاً: نام کامل';
+  const hiddenLabel = row.querySelector('[data-field="label"]');
+  labelInput.value = hiddenLabel ? /** @type {HTMLInputElement} */ (hiddenLabel).value : (row.__fieldLabel || '');
+  labelInput.addEventListener('input', () => {
+    if (hiddenLabel) /** @type {HTMLInputElement} */ (hiddenLabel).value = labelInput.value;
+    row.__fieldLabel = labelInput.value;
+    syncBuilderToHidden();
+  });
+
+  const optLabel = document.createElement('label');
+  optLabel.textContent = 'گزینه‌ها (Options) — با کاما جدا کنید';
+  optLabel.style.marginTop = '0.75rem';
+  const optInput = document.createElement('input');
+  optInput.type = 'text';
+  optInput.placeholder = 'مثلاً: مرد, زن, سایر';
+  optInput.value = optStr;
+  optInput.dir = 'rtl';
+  optInput.addEventListener('input', () => {
+    const parts = optInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+    row.__fieldOptions = parts;
+    syncBuilderToHidden();
+  });
+  const small = document.createElement('small');
+  small.textContent = 'فقط برای فیلد نوع select کاربرد دارد.';
+
+  panel.appendChild(labelEl);
+  panel.appendChild(labelInput);
+  panel.appendChild(optLabel);
+  panel.appendChild(optInput);
+  panel.appendChild(small);
+
+  return panel;
+}
+
+function getFieldsFromBuilder() {
+  const fieldList = document.getElementById('field-list');
+  if (!fieldList) return [];
+  const rows = fieldList.querySelectorAll('.field-row');
+  const fields = [];
+  rows.forEach((row) => {
+    const name = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="name"]'))?.value?.trim() || '';
+    const type = /** @type {HTMLSelectElement} */ (row.querySelector('[data-field="type"]'))?.value || 'text';
+    const required = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="required"]'))?.checked || false;
+    const label = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="label"]'))?.value?.trim() || name;
+    const options = /** @type {any} */ (row).__fieldOptions || [];
+
+    if (!name) return; // skip empty rows
+
+    const fieldObj = { type, name, label, required };
+    if (type === 'select' && options.length > 0) {
+      fieldObj.options = options;
+    }
+    fields.push(fieldObj);
+  });
+  return fields;
+}
+
+function syncBuilderToHidden() {
+  const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
+  if (!bodyHidden) return;
+  const fields = getFieldsFromBuilder();
+  bodyHidden.value = JSON.stringify(fields, null, 2);
+}
+
+function syncBuilderToTextarea() {
+  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
+  if (!bodyTextarea) return;
+  const fields = getFieldsFromBuilder();
+  bodyTextarea.value = JSON.stringify(fields, null, 2);
+}
+
+function updateFieldCountBadge() {
+  const badge = document.getElementById('field-count-badge');
+  const fieldList = document.getElementById('field-list');
+  if (badge && fieldList) {
+    badge.textContent = String(fieldList.querySelectorAll('.field-row').length);
+  }
+}
+
+// =====================================================================
+//  Profile Change Handler
+// =====================================================================
+function handleProfileChange(select) {
+  const integrationFields = document.getElementById('integration-fields');
+  if (select.value) {
+    integrationFields.style.opacity = '0.5';
+    integrationFields.style.pointerEvents = 'none';
+
+    const option = select.options[select.selectedIndex];
+    document.getElementById('webhookUrl').value = option.getAttribute('data-webhook') || '';
+    document.getElementById('googleSheetUrl').value = option.getAttribute('data-sheet') || '';
+
+    const metaStr = option.getAttribute('data-meta');
+    if (metaStr) {
+      try {
+        const meta = JSON.parse(metaStr);
+        document.getElementById('startRow').value = meta.startRow || 2;
+        if (meta.columns) {
+          document.getElementById('columnMapping').value = JSON.stringify(meta.columns, null, 2);
+        }
+      } catch(e) {}
+    }
+  } else {
+    integrationFields.style.opacity = '1';
+    integrationFields.style.pointerEvents = 'auto';
+  }
+}
+
+// =====================================================================
+//  Landing Snippets
+// =====================================================================
+
 function refreshLandingSnippets() {
   const htmlEl = document.getElementById('snippet-html');
   const scriptEl = document.getElementById('snippet-script');
   if (!htmlEl || !scriptEl) return;
 
   const keyInput = /** @type {HTMLInputElement} */ (document.getElementById('key'));
-  const bodyEl = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
   const key = (keyInput?.value || '').trim() || 'YOUR_FORM_KEY';
 
+  // get fields from builder OR from hidden textarea
   let fields = [];
   try {
-    const parsed = JSON.parse(bodyEl?.value || '[]');
-    fields = Array.isArray(parsed) ? parsed : [];
+    const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
+    const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
+    const src = (bodyHidden && !bodyHidden.disabled) ? bodyHidden : bodyTextarea;
+    if (src) {
+      const parsed = JSON.parse(src.value || '[]');
+      fields = Array.isArray(parsed) ? parsed : [];
+    }
   } catch {
-    htmlEl.textContent =
-      '<!-- Fix the JSON fields above, then refresh snippets -->';
-    scriptEl.textContent =
-      '<!-- Fix the JSON fields above, then refresh snippets -->';
-    return;
+    // fallback: try from builder
+    fields = typeof getFieldsFromBuilder === 'function' ? getFieldsFromBuilder() : [];
   }
 
   const formId = `sp-form-${sanitizeId(key)}`;
@@ -145,34 +613,20 @@ function refreshLandingSnippets() {
   scriptEl.textContent = buildLandingFormScript(formId, key);
 }
 
-/** فقط کاراکترهای امن برای id */
 function sanitizeId(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, '-') || 'form';
 }
 
-/** escape ساده برای attribute HTML */
 function escapeAttr(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeHtmlText(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/**
- * @param {string} formId
- * @param {Array<Record<string, unknown>>} fields
- */
 function buildLandingFormHtml(formId, fields) {
   const parts = [`<form id="${escapeAttr(formId)}">`];
-
   for (const field of fields) {
     const name = String(field.name || '').trim();
     if (!name) continue;
@@ -181,71 +635,38 @@ function buildLandingFormHtml(formId, fields) {
     const type = String(field.type || 'text').toLowerCase();
 
     if (type === 'textarea') {
-      parts.push(
-        `  <label>\n    ${escapeHtmlText(label)}\n    <textarea name="${escapeAttr(name)}"${required}></textarea>\n  </label>`,
-      );
+      parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <textarea name="${escapeAttr(name)}"${required}></textarea>\n  </label>`);
       continue;
     }
-
     if (type === 'select') {
       const options = Array.isArray(field.options) ? field.options : [];
-      const opts = options
-        .map((opt) => {
-          if (opt && typeof opt === 'object') {
-            const o = /** @type {Record<string, unknown>} */ (opt);
-            const val = String(o.value ?? o.label ?? '');
-            const lab = String(o.label ?? o.value ?? '');
-            return `      <option value="${escapeAttr(val)}">${escapeHtmlText(lab)}</option>`;
-          }
-          return `      <option value="${escapeAttr(opt)}">${escapeHtmlText(opt)}</option>`;
-        })
-        .join('\n');
-      parts.push(
-        `  <label>\n    ${escapeHtmlText(label)}\n    <select name="${escapeAttr(name)}"${required}>\n${opts}\n    </select>\n  </label>`,
-      );
+      const opts = options.map((opt) => {
+        if (opt && typeof opt === 'object') {
+          const val = String(opt.value ?? opt.label ?? '');
+          const lab = String(opt.label ?? opt.value ?? '');
+          return `      <option value="${escapeAttr(val)}">${escapeHtmlText(lab)}</option>`;
+        }
+        return `      <option value="${escapeAttr(opt)}">${escapeHtmlText(opt)}</option>`;
+      }).join('\n');
+      parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <select name="${escapeAttr(name)}"${required}>\n${opts}\n    </select>\n  </label>`);
       continue;
     }
-
     if (type === 'checkbox') {
-      parts.push(
-        `  <label>\n    <input type="checkbox" name="${escapeAttr(name)}" value="1"${required} />\n    ${escapeHtmlText(label)}\n  </label>`,
-      );
+      parts.push(`  <label>\n    <input type="checkbox" name="${escapeAttr(name)}" value="1"${required} />\n    ${escapeHtmlText(label)}\n  </label>`);
       continue;
     }
-
-    const inputType = [
-      'email',
-      'tel',
-      'number',
-      'password',
-      'date',
-      'url',
-      'hidden',
-    ].includes(type)
-      ? type
-      : 'text';
-
+    const inputType = ['email', 'tel', 'number', 'password', 'date', 'url', 'hidden'].includes(type) ? type : 'text';
     if (inputType === 'hidden') {
-      parts.push(
-        `  <input type="hidden" name="${escapeAttr(name)}" value="" />`,
-      );
+      parts.push(`  <input type="hidden" name="${escapeAttr(name)}" value="" />`);
       continue;
     }
-
-    parts.push(
-      `  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`,
-    );
+    parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`);
   }
-
   parts.push('  <button type="submit">Submit</button>');
   parts.push('</form>');
   return parts.join('\n');
 }
 
-/**
- * @param {string} formId
- * @param {string} formKey
- */
 function buildLandingFormScript(formId, formKey) {
   const otpEnabled = /** @type {HTMLInputElement} */ (document.getElementById('otpEnabled'))?.checked;
   const otpField = /** @type {HTMLInputElement} */ (document.getElementById('otpField'))?.value || 'mobile';
@@ -272,29 +693,23 @@ function buildLandingFormScript(formId, formKey) {
     form.reset();
   });
 })();
-</script>`;
+<\/script>`;
   }
 
-  // اسکریپت با پشتیبانی از OTP
   return `<script>
 (function () {
   var form = document.getElementById(${JSON.stringify(formId)});
   if (!form) return;
-  
-  // متغیر برای ذخیره موقت کد تایید
   var pendingOtpData = null;
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form).entries());
-    
-    // اگر قبلا کد گرفته‌ایم، حالا سابمیت نهایی انجام بدهیم
+
     if (pendingOtpData) {
       var code = prompt("لطفا کد تایید پیامک شده را وارد کنید:");
-      if (code) {
-        data.__otpCode = code;
-      }
-      
+      if (code) data.__otpCode = code;
+
       var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')}, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -311,7 +726,6 @@ function buildLandingFormScript(formId, formKey) {
       return;
     }
 
-    // مرحله اول: درخواست کد تایید
     var mobile = data[${JSON.stringify(otpField)}];
     if (!mobile) {
       alert('لطفا فیلد شماره موبایل را پر کنید');
@@ -323,25 +737,23 @@ function buildLandingFormScript(formId, formKey) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mobile: mobile }),
     });
-    
+
     if (!otpRes.ok) {
       var err = await otpRes.json().catch(function () { return {}; });
       alert(err.message || 'خطا در ارسال پیامک');
       return;
     }
-    
+
     alert('کد تایید ارسال شد. لطفاً فرم را دوباره سابمیت کنید تا کد پرسیده شود.');
     pendingOtpData = data;
   });
 })();
-</script>`;
+<\/script>`;
 }
 
-/**
- * Display dynamic Toast Notification
- * @param {string} message 
- * @param {'success' | 'danger' | 'warning'} type 
- */
+// =====================================================================
+//  Toast Notification
+// =====================================================================
 function showToast(message, type = 'success') {
   let container = document.getElementById('toast-container');
   if (!container) {
@@ -349,15 +761,10 @@ function showToast(message, type = 'success') {
     container.id = 'toast-container';
     document.body.appendChild(container);
   }
-
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span class="toast-message">${message}</span>
-  `;
-
+  toast.innerHTML = `<span class="toast-message">${message}</span>`;
   container.appendChild(toast);
-
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(10px)';

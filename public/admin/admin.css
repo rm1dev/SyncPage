@@ -891,6 +891,297 @@ textarea.form-control {
   color: var(--text-dim);
 }
 
+/* ==========================================================================
+   Form-Edit Tabs & Visual Field Builder
+   ========================================================================== */
+
+/* -- Tab Navigation -- */
+.form-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--glass-border);
+  padding: 0 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.form-tabs::-webkit-scrollbar { display: none; }
+
+.form-tab-btn {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0.85rem 1.25rem;
+  cursor: pointer;
+  position: relative;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.form-tab-btn:hover { color: var(--text-main); }
+.form-tab-btn.active {
+  color: var(--accent-primary);
+  font-weight: 600;
+  border-bottom-color: var(--accent-primary);
+}
+.form-tab-btn .tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--accent-primary);
+  border-radius: var(--radius-full);
+  margin-right: 0.4rem;
+  padding: 0 5px;
+}
+.form-tab-btn.active .tab-badge {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.form-tab-panel {
+  display: none;
+  animation: fadeIn 0.25s ease-out;
+}
+.form-tab-panel.active { display: block; }
+
+/* -- Visual Field Builder -- */
+.field-builder { margin-top: 0.5rem; }
+
+.field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr auto auto auto 36px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.field-row:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.field-row .drag-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+}
+.field-row .drag-handle:active { cursor: grabbing; }
+.field-row .drag-handle svg { width: 16px; height: 16px; }
+
+.field-row .field-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.field-row .field-input:focus {
+  border-color: var(--glass-border-focus);
+}
+
+.field-row select.field-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.75rem center;
+  padding-left: 2rem;
+}
+
+.field-row .field-req-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.field-row .field-req-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.field-row .field-options-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  display: flex;
+  align-items: center;
+}
+.field-row .field-options-btn:hover {
+  color: var(--accent-primary);
+  background: rgba(6, 182, 212, 0.1);
+}
+.field-row .field-options-btn.has-options {
+  color: var(--accent-primary);
+}
+
+.field-row .field-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  display: flex;
+  align-items: center;
+}
+.field-row .field-remove-btn:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.field-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  border: 1px dashed rgba(6, 182, 212, 0.35);
+  border-radius: var(--radius-md);
+  background: rgba(6, 182, 212, 0.04);
+  color: var(--accent-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+.field-add-row:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: var(--accent-primary);
+}
+
+/* field row dragging state */
+.field-row.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+}
+.field-row.drag-over-above {
+  border-top: 2px solid var(--accent-primary);
+}
+.field-row.drag-over-below {
+  border-bottom: 2px solid var(--accent-primary);
+}
+
+/* options inline panel */
+.field-options-panel {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.field-options-panel label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+.field-options-panel input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  outline: none;
+  direction: ltr;
+}
+.field-options-panel input:focus {
+  border-color: var(--glass-border-focus);
+}
+.field-options-panel small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+/* -- JSON raw toggle -- */
+.json-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+}
+.json-toggle-bar .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Tab panel spacing */
+.form-tab-panel .content-wrapper {
+  margin-top: 1.25rem;
+}
+
+/* Responsive field builder */
+@media (max-width: 768px) {
+  .field-row {
+    grid-template-columns: 28px 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 0.5rem;
+  }
+  .field-row .field-req-toggle,
+  .field-row .field-options-btn,
+  .field-row .field-remove-btn {
+    grid-row: 2;
+  }
+  .form-tabs {
+    gap: 0;
+  }
+  .form-tab-btn {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+  }
+}
+
 .status-pill.status-ok {
   background: var(--color-success-bg);
   color: var(--color-success);
