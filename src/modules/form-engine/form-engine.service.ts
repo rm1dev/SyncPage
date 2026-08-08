@@ -100,7 +100,14 @@ export class FormEngineService {
   }
 
   // کدهای موقت OTP در حافظه (با منقضی شدن بعد از ۲ دقیقه)
-  private otpStore = new Map<string, { code: string; expiresAt: number }>();
+  private otpStore = new Map<
+    string,
+    {
+      code: string;
+      expiresAt: number;
+      timeoutId?: NodeJS.Timeout;
+    }
+  >();
 
   async requestOtp(key: string, mobile: string) {
     const form = await this.getByKey(key);
@@ -117,9 +124,32 @@ export class FormEngineService {
     const code = Math.floor(min + Math.random() * (max - min + 1)).toString();
     
     const expiresAt = Date.now() + 2 * 60 * 1000;
-
     const cacheKey = `${key}:${mobile.trim()}`;
-    this.otpStore.set(cacheKey, { code, expiresAt });
+
+    // پاکسازی تایمر قبلی اگر وجود داشت
+    const prev = this.otpStore.get(cacheKey);
+    if (prev?.timeoutId) {
+      clearTimeout(prev.timeoutId);
+    }
+
+    // ایجاد تایمر برای ثبت رکورد در صورت عدم وریفای بعد از ۳ دقیقه
+    const timeoutId = setTimeout(async () => {
+      const entry = this.otpStore.get(cacheKey);
+      if (entry) {
+        this.otpStore.delete(cacheKey);
+        try {
+          const otpField = form.otpField || 'mobile';
+          const payload: Record<string, unknown> = {
+            [otpField]: mobile.trim(),
+          };
+          await this.submit(key, payload, undefined);
+        } catch {
+          // خطا در سابمیت خودکار بعد از انقضا لاگ یا نادیده گرفته می‌شود
+        }
+      }
+    }, 3 * 60 * 1000);
+
+    this.otpStore.set(cacheKey, { code, expiresAt, timeoutId });
 
     const sent = await this.kavenegar.sendLookupOtp(mobile, code, template);
     return { ok: true, sent };
@@ -130,11 +160,13 @@ export class FormEngineService {
     const entry = this.otpStore.get(cacheKey);
     if (!entry) return false;
     if (Date.now() > entry.expiresAt) {
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
       this.otpStore.delete(cacheKey);
       return false;
     }
     const isValid = entry.code === code.trim();
     if (isValid) {
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
       this.otpStore.delete(cacheKey);
     }
     return isValid;
