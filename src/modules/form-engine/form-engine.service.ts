@@ -77,6 +77,8 @@ export class FormEngineService {
         ...(dto.otpField !== undefined ? { otpField: dto.otpField || 'mobile' } : {}),
         ...(dto.otpTemplate !== undefined ? { otpTemplate: dto.otpTemplate || 'verify' } : {}),
         ...(dto.otpLength !== undefined ? { otpLength: dto.otpLength } : {}),
+        ...(dto.sendUtmToWebhook !== undefined ? { sendUtmToWebhook: dto.sendUtmToWebhook } : {}),
+        ...(dto.sendUtmToSheet !== undefined ? { sendUtmToSheet: dto.sendUtmToSheet } : {}),
         ...(dto.profileId !== undefined ? { profileId: dto.profileId || null } : {}),
       },
     });
@@ -259,7 +261,7 @@ export class FormEngineService {
     });
   }
 
-  listSubmissions(formId?: string, fromDate?: Date, toDate?: Date, otpFilter?: string) {
+  listSubmissions(formId?: string, fromDate?: Date, toDate?: Date, otpFilter?: string, utmFilter?: string) {
     const where: Prisma.FormSubmissionWhereInput = {};
     if (formId) where.formId = formId;
     
@@ -273,6 +275,12 @@ export class FormEngineService {
       where.otpStatus = 'VERIFIED';
     } else if (otpFilter === 'UNVERIFIED') {
       where.otpStatus = 'UNVERIFIED';
+    }
+
+    if (utmFilter) {
+      where.payload = {
+        string_contains: utmFilter,
+      };
     }
 
     return this.prisma.formSubmission.findMany({
@@ -303,6 +311,8 @@ export class FormEngineService {
     otpField?: string | null;
     otpTemplate?: string | null;
     otpLength?: number;
+    sendUtmToWebhook?: boolean;
+    sendUtmToSheet?: boolean;
     updatedAt: Date;
   }) {
     await this.outbox.enqueueFormSync({
@@ -322,6 +332,8 @@ export class FormEngineService {
         otpField: form.otpField,
         otpTemplate: form.otpTemplate,
         otpLength: form.otpLength,
+        sendUtmToWebhook: form.sendUtmToWebhook,
+        sendUtmToSheet: form.sendUtmToSheet,
       },
     });
   }

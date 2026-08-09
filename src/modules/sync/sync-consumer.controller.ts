@@ -113,6 +113,8 @@ export class SyncConsumerController {
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
             otpLength: payload.form.otpLength || 5,
+            sendUtmToWebhook: payload.form.sendUtmToWebhook ?? true,
+            sendUtmToSheet: payload.form.sendUtmToSheet ?? true,
           },
           update: {
             title: payload.form.title,
@@ -125,6 +127,8 @@ export class SyncConsumerController {
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
             otpLength: payload.form.otpLength || 5,
+            sendUtmToWebhook: payload.form.sendUtmToWebhook ?? true,
+            sendUtmToSheet: payload.form.sendUtmToSheet ?? true,
           },
         });
       }

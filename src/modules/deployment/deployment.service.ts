@@ -263,6 +263,8 @@ export class DeploymentService implements OnModuleInit {
         otpField: f.otpField,
         otpTemplate: f.otpTemplate,
         otpLength: f.otpLength,
+        sendUtmToWebhook: f.sendUtmToWebhook,
+        sendUtmToSheet: f.sendUtmToSheet,
         updatedAt: f.updatedAt.toISOString(),
         idempotencyKey: `form:${f.key}:${f.updatedAt.getTime()}`,
       })),

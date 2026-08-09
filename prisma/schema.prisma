@@ -51,6 +51,10 @@ model Form {
   otpField        String?          // نام فیلدی که شماره موبایل توش قرار میگیره (مثلا mobile)
   otpLength       Int              @default(5)      // طول کد OTP
   
+  // تنظیمات UTM
+  sendUtmToWebhook Boolean         @default(true)
+  sendUtmToSheet   Boolean         @default(true)
+  
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   submissions     FormSubmission[]

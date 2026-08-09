@@ -30,6 +30,8 @@ export interface FormSyncPayload {
     otpField?: string | null;
     otpTemplate?: string | null;
     otpLength?: number | null;
+    sendUtmToWebhook?: boolean | null;
+    sendUtmToSheet?: boolean | null;
   };
 }
 

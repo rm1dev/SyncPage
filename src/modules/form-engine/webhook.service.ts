@@ -14,6 +14,8 @@ export class WebhookService {
     webhookUrl?: string | null;
     googleSheetUrl?: string | null;
     googleSheetMeta?: unknown;
+    sendUtmToWebhook?: boolean;
+    sendUtmToSheet?: boolean;
   }, submission: {
     id: string;
     payload: Record<string, unknown>;
@@ -28,6 +30,13 @@ export class WebhookService {
       const MAX_RETRIES = 3;
       let success = false;
       
+      let webhookPayload = { ...submission.payload };
+      if (form.sendUtmToWebhook === false) {
+        Object.keys(webhookPayload).forEach(key => {
+          if (key.startsWith('utm_')) delete webhookPayload[key];
+        });
+      }
+      
       while (attempts < MAX_RETRIES && !success) {
         attempts++;
         try {
@@ -35,7 +44,7 @@ export class WebhookService {
             formKey: form.key,
             formTitle: form.title,
             submissionId: submission.id,
-            payload: submission.payload,
+            payload: webhookPayload,
             createdAt: submission.createdAt.toISOString(),
           });
           success = true;
@@ -70,10 +79,17 @@ export class WebhookService {
 
     // 2. ارسال به گوگل شیت در صورت تنظیم بودن (بدون تغییر)
     if (form.googleSheetUrl) {
+      let sheetPayload = { ...submission.payload };
+      if (form.sendUtmToSheet === false) {
+        Object.keys(sheetPayload).forEach(key => {
+          if (key.startsWith('utm_')) delete sheetPayload[key];
+        });
+      }
+
       this.sendToGoogleSheet(
         form.googleSheetUrl,
         form.googleSheetMeta as { startRow?: number; columns?: Record<string, string> } | null,
-        submission.payload,
+        sheetPayload,
       ).catch((err) => {
         this.logger.error(`Google Sheet sync error for form ${form.key}: ${err.message}`);
       });
@@ -97,11 +113,18 @@ export class WebhookService {
     });
 
     try {
+      let webhookPayload = { ...(submission.payload as Record<string, unknown>) };
+      if (submission.form.sendUtmToWebhook === false) {
+        Object.keys(webhookPayload).forEach(key => {
+          if (key.startsWith('utm_')) delete webhookPayload[key];
+        });
+      }
+
       await this.sendWebhook(submission.form.webhookUrl, {
         formKey: submission.form.key,
         formTitle: submission.form.title,
         submissionId: submission.id,
-        payload: submission.payload as Record<string, unknown>,
+        payload: webhookPayload,
         createdAt: submission.createdAt.toISOString(),
       });
 

@@ -679,7 +679,8 @@ function buildLandingFormScript(formId, formKey) {
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form).entries());
-    var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')}, {
+    var qs = window.location.search;
+    var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')} + qs, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -709,8 +710,9 @@ function buildLandingFormScript(formId, formKey) {
     if (pendingOtpData) {
       var code = prompt("لطفا کد تایید پیامک شده را وارد کنید:");
       if (code) data.__otpCode = code;
-
-      var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')}, {
+      
+      var qs = window.location.search;
+      var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')} + qs, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

@@ -46,6 +46,14 @@ export class CreateFormDto {
   otpLength?: number;
 
   @IsOptional()
+  @IsBoolean()
+  sendUtmToWebhook?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  sendUtmToSheet?: boolean;
+
+  @IsOptional()
   @IsString()
   profileId?: string | null;
 }
@@ -93,6 +101,14 @@ export class UpdateFormDto {
   @Min(4)
   @Max(10)
   otpLength?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  sendUtmToWebhook?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  sendUtmToSheet?: boolean;
 
   @IsOptional()
   @IsString()

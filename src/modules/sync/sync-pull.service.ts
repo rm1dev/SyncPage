@@ -36,6 +36,8 @@ type FormManifestItem = {
   otpField?: string | null;
   otpTemplate?: string | null;
   otpLength?: number | null;
+  sendUtmToWebhook?: boolean | null;
+  sendUtmToSheet?: boolean | null;
 };
 
 type SettingManifestItem = {
@@ -180,6 +182,8 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
             otpLength: f.otpLength || 5,
+            sendUtmToWebhook: f.sendUtmToWebhook ?? true,
+            sendUtmToSheet: f.sendUtmToSheet ?? true,
           },
           update: {
             title: f.title,
@@ -192,6 +196,8 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
             otpLength: f.otpLength || 5,
+            sendUtmToWebhook: f.sendUtmToWebhook ?? true,
+            sendUtmToSheet: f.sendUtmToSheet ?? true,
           },
         });
         await this.apply.markProcessed(f.idempotencyKey);

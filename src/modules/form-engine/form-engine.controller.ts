@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AdminTokenGuard } from '../../common/guards/admin-token.guard';
@@ -23,10 +24,19 @@ export class FormEngineController {
   submit(
     @Param('key') key: string,
     @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, string>,
   ) {
     const otpCode = body.__otpCode ? String(body.__otpCode) : undefined;
     const payload = { ...body };
     delete payload.__otpCode;
+    
+    // استخراج UTM ها از کوئری و اضافه کردن به payload
+    for (const [qKey, qValue] of Object.entries(query)) {
+      if (qKey.startsWith('utm_') && qValue) {
+        payload[qKey] = qValue;
+      }
+    }
+
     return this.forms.submit(key, payload, otpCode);
   }
 

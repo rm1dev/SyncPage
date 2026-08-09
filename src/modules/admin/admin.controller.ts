@@ -279,6 +279,8 @@ export class AdminController {
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
         otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
+        sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+        sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
@@ -299,6 +301,8 @@ export class AdminController {
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
           otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
+          sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+          sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         },
       });
     }
@@ -325,6 +329,8 @@ export class AdminController {
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
         otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
+        sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+        sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
       });
       return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
@@ -346,6 +352,8 @@ export class AdminController {
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
           otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
+          sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+          sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         },
         bodyJson: body.body,
         columnMappingJson: body.columnMapping,
@@ -493,6 +501,7 @@ export class AdminController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('otpFilter') otpFilter?: string,
+    @Query('utmFilter') utmFilter?: string,
   ) {
     const forms = await this.forms.list();
     const activeFormId = formId || undefined;
@@ -522,6 +531,7 @@ export class AdminController {
       fromDate,
       toDate,
       otpFilter,
+      utmFilter,
     );
 
     const submissions = rawSubmissions.map((s) => {
@@ -530,6 +540,18 @@ export class AdminController {
       const jdateStr = j
         ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
         : d.toLocaleString('fa-IR');
+
+      const payloadObj = s.payload as Record<string, unknown>;
+      const utms: { key: string; value: string }[] = [];
+      
+      // استخراج UTM ها برای نمایش
+      if (payloadObj) {
+        for (const [key, val] of Object.entries(payloadObj)) {
+          if (key.startsWith('utm_')) {
+            utms.push({ key: key.replace('utm_', ''), value: String(val) });
+          }
+        }
+      }
 
       return {
         id: s.id,
@@ -540,6 +562,8 @@ export class AdminController {
         otpStatus: s.otpStatus,
         isVerified: s.otpStatus === 'VERIFIED',
         isUnverified: s.otpStatus === 'UNVERIFIED',
+        utms,
+        utmStr: utms.length > 0 ? true : false,
       };
     });
 
@@ -552,6 +576,7 @@ export class AdminController {
       startDate,
       endDate,
       otpFilter,
+      utmFilter,
       submissions,
     };
   }
