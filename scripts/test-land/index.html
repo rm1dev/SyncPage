@@ -205,10 +205,37 @@
   (function () {
     var form = document.getElementById("sp-form-test");
     if (!form) return;
+
+    try {
+      var searchParams = new URLSearchParams(window.location.search);
+      searchParams.forEach(function (val, key) {
+        if (key.indexOf('utm_') === 0 && val) {
+          sessionStorage.setItem('sp_' + key, val);
+        }
+      });
+    } catch (e) {}
+
+    function getStoredUtms() {
+      var utms = {};
+      try {
+        for (var i = 0; i < sessionStorage.length; i++) {
+          var k = sessionStorage.key(i);
+          if (k && k.indexOf('sp_utm_') === 0) {
+            utms[k.replace('sp_', '')] = sessionStorage.getItem(k);
+          }
+        }
+      } catch (e) {}
+      return utms;
+    }
+
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
       var data = Object.fromEntries(new FormData(form).entries());
-      var res = await fetch("/api/forms/test/submit", {
+      var utms = getStoredUtms();
+      Object.assign(data, utms);
+
+      var qs = window.location.search;
+      var res = await fetch("/api/forms/test/submit" + qs, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

@@ -30,10 +30,17 @@ export class FormEngineController {
     const payload = { ...body };
     delete payload.__otpCode;
     
-    // استخراج UTM ها از کوئری و اضافه کردن به payload
+    // 1. استخراج UTM ها از کوئری استرینگ (POST URL params)
     for (const [qKey, qValue] of Object.entries(query)) {
       if (qKey.startsWith('utm_') && qValue) {
         payload[qKey] = qValue;
+      }
+    }
+
+    // 2. استخراج UTM ها از بدنه درخواست (Body/FormData) در صورت وجود
+    for (const [bKey, bValue] of Object.entries(body)) {
+      if (bKey.startsWith('utm_') && bValue) {
+        payload[bKey] = bValue;
       }
     }
 

@@ -676,9 +676,35 @@ function buildLandingFormScript(formId, formKey) {
 (function () {
   var form = document.getElementById(${JSON.stringify(formId)});
   if (!form) return;
+
+  try {
+    var searchParams = new URLSearchParams(window.location.search);
+    searchParams.forEach(function (val, key) {
+      if (key.indexOf('utm_') === 0 && val) {
+        sessionStorage.setItem('sp_' + key, val);
+      }
+    });
+  } catch (e) {}
+
+  function getStoredUtms() {
+    var utms = {};
+    try {
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (k && k.indexOf('sp_utm_') === 0) {
+          utms[k.replace('sp_', '')] = sessionStorage.getItem(k);
+        }
+      }
+    } catch (e) {}
+    return utms;
+  }
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form).entries());
+    var utms = getStoredUtms();
+    Object.assign(data, utms);
+
     var qs = window.location.search;
     var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')} + qs, {
       method: 'POST',
@@ -701,11 +727,36 @@ function buildLandingFormScript(formId, formKey) {
 (function () {
   var form = document.getElementById(${JSON.stringify(formId)});
   if (!form) return;
+
+  try {
+    var searchParams = new URLSearchParams(window.location.search);
+    searchParams.forEach(function (val, key) {
+      if (key.indexOf('utm_') === 0 && val) {
+        sessionStorage.setItem('sp_' + key, val);
+      }
+    });
+  } catch (e) {}
+
+  function getStoredUtms() {
+    var utms = {};
+    try {
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (k && k.indexOf('sp_utm_') === 0) {
+          utms[k.replace('sp_', '')] = sessionStorage.getItem(k);
+        }
+      }
+    } catch (e) {}
+    return utms;
+  }
+
   var pendingOtpData = null;
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var data = Object.fromEntries(new FormData(form).entries());
+    var utms = getStoredUtms();
+    Object.assign(data, utms);
 
     if (pendingOtpData) {
       var code = prompt("لطفا کد تایید پیامک شده را وارد کنید:");
