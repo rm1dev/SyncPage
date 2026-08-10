@@ -33,7 +33,7 @@ export class WebhookService {
       let webhookPayload = { ...submission.payload };
       if (form.sendUtmToWebhook === false) {
         Object.keys(webhookPayload).forEach(key => {
-          if (key.startsWith('utm_')) delete webhookPayload[key];
+          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete webhookPayload[key];
         });
       }
       
@@ -82,7 +82,7 @@ export class WebhookService {
       let sheetPayload = { ...submission.payload };
       if (form.sendUtmToSheet === false) {
         Object.keys(sheetPayload).forEach(key => {
-          if (key.startsWith('utm_')) delete sheetPayload[key];
+          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete sheetPayload[key];
         });
       }
 
@@ -116,7 +116,7 @@ export class WebhookService {
       let webhookPayload = { ...(submission.payload as Record<string, unknown>) };
       if (submission.form.sendUtmToWebhook === false) {
         Object.keys(webhookPayload).forEach(key => {
-          if (key.startsWith('utm_')) delete webhookPayload[key];
+          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete webhookPayload[key];
         });
       }
 
@@ -162,6 +162,23 @@ export class WebhookService {
 
     // پاک‌سازی placeholderهای باقی‌مانده که مقداری نداشتند (مثلا $SOMETHING$)
     resolvedUrl = resolvedUrl.replace(/\$[A-Za-z0-9_]+\$/g, '');
+    resolvedUrl = resolvedUrl.replace(/\{[A-Za-z0-9_]+\}/g, '');
+
+    // اضافه کردن خودکار پارامترهای UTM به Query String آدرس
+    try {
+      const urlObj = new URL(resolvedUrl);
+      for (const [key, val] of Object.entries(payload)) {
+        if (key.startsWith('utm_') || key.startsWith('sp_utm_')) {
+          // برای جلوگیری از تکرار، فقط اگر از قبل تنظیم نشده بود اضافه می‌کنیم
+          if (!urlObj.searchParams.has(key) && val !== undefined && val !== null && val !== '') {
+            urlObj.searchParams.append(key, String(val));
+          }
+        }
+      }
+      resolvedUrl = urlObj.toString();
+    } catch (e) {
+      this.logger.warn(`Could not parse webhook URL to append UTMs: ${resolvedUrl}`);
+    }
 
     this.logger.log(`Dispatching webhook to ${resolvedUrl}`);
 
