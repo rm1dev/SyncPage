@@ -339,6 +339,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     keyInput?.addEventListener('input', refreshLandingSnippets);
   }
+
+  // ===================================================================
+  //  FILE MANAGER: مرور، ویرایش و دانلود فایل‌های لندینگ
+  // ===================================================================
+  const fileManager = document.getElementById('file-manager');
+  if (fileManager) {
+    initFileManager(fileManager);
+  }
 });
 
 // =====================================================================
@@ -824,4 +832,249 @@ function showToast(message, type = 'success') {
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+// =====================================================================
+//  File Manager (CodeMirror 6 editor + file tree)
+// =====================================================================
+
+/** آیکن‌های SVG برای گره‌های درخت */
+const FM_ICONS = {
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  caret: '<svg class="ft-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>',
+};
+
+function fmFormatSize(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+/** لود تنبل CodeMirror 6 از CDN (esm) — فقط یک بار */
+let __cmPromise = null;
+function fmLoadCodeMirror() {
+  if (__cmPromise) return __cmPromise;
+  __cmPromise = (async () => {
+    const [view, state, lang] = await Promise.all([
+      import('https://esm.sh/@codemirror/view@6'),
+      import('https://esm.sh/@codemirror/state@6'),
+      import('https://esm.sh/@codemirror/language@6'),
+    ]);
+    const { html } = await import('https://esm.sh/@codemirror/lang-html@6');
+    const { css } = await import('https://esm.sh/@codemirror/lang-css@6');
+    const { javascript } = await import('https://esm.sh/@codemirror/lang-javascript@6');
+    const { json } = await import('https://esm.sh/@codemirror/lang-json@6');
+    const { oneDark } = await import('https://esm.sh/@codemirror/theme-one-dark@6');
+    return { view, state, lang, html, css, javascript, json, oneDark };
+  })();
+  return __cmPromise;
+}
+
+function fmLanguageFor(cm, path) {
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  switch (ext) {
+    case 'html':
+    case 'htm':
+      return cm.html();
+    case 'css':
+      return cm.css();
+    case 'js':
+    case 'mjs':
+      return cm.javascript();
+    case 'json':
+      return cm.json();
+    default:
+      return null;
+  }
+}
+
+function initFileManager(root) {
+  const treeEl = document.getElementById('file-tree');
+  const landingSelect = /** @type {HTMLSelectElement} */ (document.getElementById('landing-select'));
+  const editorTitle = document.getElementById('fm-editor-title');
+  const editorActions = document.getElementById('fm-editor-actions');
+  const emptyState = document.getElementById('fm-empty-state');
+  const editorContainer = document.getElementById('fm-editor-container');
+  const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('fm-editor-textarea'));
+  const saveBtn = document.getElementById('fm-save-file');
+  const downloadFileBtn = /** @type {HTMLAnchorElement} */ (document.getElementById('fm-download-file'));
+  const slugPill = document.getElementById('fm-slug-pill');
+
+  let slug = root.getAttribute('data-active-slug') || (landingSelect && landingSelect.value) || '';
+  let treeData = [];
+  try {
+    const raw = document.getElementById('fm-tree-data')?.textContent || '[]';
+    treeData = JSON.parse(raw);
+  } catch {
+    treeData = [];
+  }
+
+  let cmView = null;
+  let currentPath = null;
+
+  // --- رندر درخت فایل ---
+  function renderTree(nodes, container) {
+    const ul = document.createElement('ul');
+    for (const node of nodes) {
+      const li = document.createElement('li');
+      li.className = 'ft-node';
+
+      const row = document.createElement('div');
+      row.className = 'ft-row';
+      row.setAttribute('role', 'treeitem');
+      row.setAttribute('data-path', node.path);
+      row.setAttribute('data-type', node.type);
+
+      if (node.type === 'directory') {
+        row.innerHTML = FM_ICONS.caret + FM_ICONS.folder + '<span class="ft-name"></span>';
+        const childrenUl = renderTree(node.children || [], li);
+        childrenUl.classList.add('ft-children');
+        row.addEventListener('click', () => {
+          li.classList.toggle('open');
+        });
+      } else {
+        row.innerHTML = '<span style="width:14px;flex-shrink:0;"></span>' + FM_ICONS.file + '<span class="ft-name"></span><span class="ft-size"></span>';
+        row.querySelector('.ft-size').textContent = fmFormatSize(node.size);
+        row.addEventListener('click', () => {
+          openFile(node.path, row);
+        });
+      }
+      row.querySelector('.ft-name').textContent = node.name;
+      row.title = node.path;
+      li.insertBefore(row, li.firstChild);
+      ul.appendChild(li);
+    }
+    container.appendChild(ul);
+    return ul;
+  }
+
+  function rebuildTree(nodes) {
+    if (!treeEl) return;
+    treeEl.innerHTML = '';
+    if (!nodes || nodes.length === 0) {
+      treeEl.innerHTML = '<div class="fm-empty-state" style="padding:2rem 1rem;"><p>پوشه لندینگ خالی است.</p></div>';
+      return;
+    }
+    renderTree(nodes, treeEl);
+  }
+
+  rebuildTree(treeData);
+
+  // --- ساخت / بازسازی ویرایشگر CodeMirror ---
+  async function ensureEditor(content, path) {
+    const cm = await fmLoadCodeMirror();
+    const extensions = [
+      cm.view.lineNumbers(),
+      cm.view.highlightActiveLine(),
+      cm.view.highlightActiveLineGutter(),
+      cm.lang.syntaxHighlighting(cm.lang.defaultHighlightStyle, { fallback: true }),
+      cm.oneDark,
+      cm.view.EditorView.lineWrapping,
+    ];
+    const langExt = fmLanguageFor(cm, path);
+    if (langExt) extensions.push(langExt);
+
+    const state = cm.state.EditorState.create({
+      doc: content,
+      extensions,
+    });
+
+    if (cmView) {
+      cmView.setState(state);
+    } else {
+      if (textarea) textarea.style.display = 'none';
+      cmView = new cm.view.EditorView({
+        state,
+        parent: editorContainer,
+      });
+    }
+  }
+
+  function getEditorContent() {
+    if (cmView) return cmView.state.doc.toString();
+    return textarea ? textarea.value : '';
+  }
+
+  // --- باز کردن فایل ---
+  async function openFile(path, rowEl) {
+    if (!slug) return;
+    document.querySelectorAll('.ft-row.active').forEach((r) => r.classList.remove('active'));
+    if (rowEl) rowEl.classList.add('active');
+
+    try {
+      const res = await fetch(`/spadmin/files/api/read?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || 'خواندن فایل ممکن نشد (فایل باینری؟)', 'danger');
+        return;
+      }
+      const data = await res.json();
+      currentPath = path;
+
+      if (editorTitle) editorTitle.textContent = path;
+      if (emptyState) emptyState.style.display = 'none';
+      if (editorContainer) editorContainer.style.display = 'block';
+      if (editorActions) editorActions.style.display = 'flex';
+      if (downloadFileBtn) {
+        downloadFileBtn.href = `/spadmin/files/download/file?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`;
+      }
+
+      await ensureEditor(data.content, path);
+    } catch (err) {
+      showToast('خطا در خواندن فایل', 'danger');
+    }
+  }
+
+  // --- ذخیره فایل ---
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (!slug || !currentPath) return;
+      saveBtn.disabled = true;
+      try {
+        const res = await fetch('/spadmin/files/api/write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug, path: currentPath, content: getEditorContent() }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.message || 'ذخیره فایل ناموفق بود', 'danger');
+          return;
+        }
+        showToast(`فایل ${currentPath} ذخیره شد.`, 'success');
+      } catch {
+        showToast('خطا در ذخیره فایل', 'danger');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  // --- تعویض لندینگ ---
+  if (landingSelect) {
+    landingSelect.addEventListener('change', () => {
+      const next = landingSelect.value;
+      if (next && next !== slug) {
+        window.location.href = `/spadmin/files?slug=${encodeURIComponent(next)}`;
+      }
+    });
+  }
+
+  // --- باز کردن خودکار فایل انتخاب‌شده از سرور (اگر path در URL باشد) ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialPath = urlParams.get('path');
+  if (initialPath) {
+    const row = treeEl ? treeEl.querySelector(`.ft-row[data-path="${CSS.escape(initialPath)}"]`) : null;
+    // باز کردن گره‌های والد
+    if (row) {
+      let node = row.closest('.ft-node');
+      while (node) {
+        node.classList.add('open');
+        node = node.parentElement ? node.parentElement.closest('.ft-node') : null;
+      }
+    }
+    openFile(initialPath, row);
+  }
 }

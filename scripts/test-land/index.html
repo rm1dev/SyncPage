@@ -185,18 +185,14 @@
   <main class="page">
     <div class="shell">
       <h1 class="brand">تست لندینگ</h1>
-      <p class="lead">نام و ایمیلت رو بفرست تا ثبت بشه.</p>
+      <p class="lead">شماره موبایلت رو بفرست تا ثبت بشه.</p>
 
       <form id="sp-form-test">
         <label>
-          نام کامل
-          <input type="text" name="fullName" required />
+          شماره موبایل
+          <input type="tel" name="mobile" required pattern="^09[0-9]{9}$" placeholder="09123456789" dir="ltr" />
         </label>
-        <label>
-          ایمیل
-          <input type="email" name="email" required />
-        </label>
-        <button type="submit">Submit</button>
+        <button type="submit">ثبت نام</button>
       </form>
     </div>
   </main>
@@ -242,10 +238,10 @@
       });
       if (!res.ok) {
         var err = await res.json().catch(function () { return {}; });
-        alert(err.message || 'Submit failed');
+        alert(err.message || 'خطا در ثبت فرم');
         return;
       }
-      alert('Submitted successfully');
+      alert('فرم با موفقیت ثبت شد');
       form.reset();
     });
   })();

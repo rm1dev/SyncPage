@@ -1,0 +1,88 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <h1>مدیریت فایل‌های لندینگ</h1>
+    <span class="subtitle">مرور، ویرایش و دانلود فایل‌های لندینگ‌های مستقرشده</span>
+  </div>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>{{error}}</span>
+  </div>
+{{/if}}
+{{#if flash}}
+  <div class="alert alert-ok">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <span>{{flash}}</span>
+  </div>
+{{/if}}
+
+<div id="file-manager" data-active-slug="{{activeSlug}}">
+  <!-- Toolbar: انتخاب لندینگ + دانلود کل لندینگ -->
+  <div class="content-wrapper">
+    <div class="section-header">
+      <span>انتخاب لندینگ</span>
+      {{#if activeSlug}}
+      <a class="btn btn-primary btn-sm" href="/spadmin/files/download/zip?slug={{activeSlug}}" title="دانلود کل لندینگ به صورت ZIP">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>دانلود کل لندینگ (ZIP)</span>
+      </a>
+      {{/if}}
+    </div>
+    <div class="form-group" style="max-width: 420px;">
+      <label class="form-label" for="landing-select">لندینگ</label>
+      <select class="form-control" id="landing-select">
+        {{#each landings}}
+          <option value="{{this.slug}}" {{#if (eq this.slug ../activeSlug)}}selected{{/if}}>{{this.slug}} (v{{this.version}})</option>
+        {{/each}}
+      </select>
+    </div>
+  </div>
+
+  {{#if activeSlug}}
+  <div class="fm-layout mt-3">
+    <!-- File Tree -->
+    <div class="content-wrapper fm-tree-panel">
+      <div class="section-header">
+        <span>فایل‌ها</span>
+        <span class="status-pill" id="fm-slug-pill">{{activeSlug}}</span>
+      </div>
+      <div id="file-tree" class="file-tree" role="tree"></div>
+    </div>
+
+    <!-- Editor / Viewer -->
+    <div class="content-wrapper fm-editor-panel">
+      <div class="section-header">
+        <span id="fm-editor-title">ویرایشگر</span>
+        <div class="fm-editor-actions" id="fm-editor-actions" style="display:none;">
+          <a class="btn btn-secondary btn-sm" id="fm-download-file" href="#" title="دانلود این فایل">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>دانلود فایل</span>
+          </a>
+          <button type="button" class="btn btn-primary btn-sm" id="fm-save-file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <span>ذخیره</span>
+          </button>
+        </div>
+      </div>
+      <div id="fm-empty-state" class="fm-empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <p>از درخت سمت راست یک فایل انتخاب کنید تا محتوای آن نمایش داده شود.</p>
+      </div>
+      <div id="fm-editor-container" style="display:none;">
+        <textarea id="fm-editor-textarea" class="form-control" dir="ltr" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <div class="content-wrapper mt-3">
+    <div class="fm-empty-state">
+      <p>هنوز هیچ لندینگی مستقر نشده است. ابتدا از بخش «بارگذاری و استقرار» یک لندینگ آپلود کنید.</p>
+    </div>
+  </div>
+  {{/if}}
+</div>
+
+<!-- داده درخت برای JS -->
+<script id="fm-tree-data" type="application/json">{{{json tree}}}</script>

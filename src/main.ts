@@ -60,7 +60,7 @@ async function bootstrap() {
   ]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
-  app.use('/preview', express.static(join(tempPath, 'preview')));
+  app.use('/preview', express.static(join(process.cwd(), tempPath, 'preview')));
   // لندینگ‌ها مستقیم روی /:slug/ سرو می‌شن (بدون پیشوند /pages)
   app.use(express.static(staticPath));
   // مسیر قدیمی رو ریدایرکت می‌کنیم که لینک‌های قبلی نشکنن

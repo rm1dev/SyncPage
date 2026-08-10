@@ -56,16 +56,13 @@ export class DeploymentService implements OnModuleInit {
     const { copyFileSync } = await import('fs');
     copyFileSync(zipPath, storedZip);
 
-    const publicBase = (
-      this.config.get<string>('publicBaseUrl') || ''
-    ).replace(/\/$/, '');
     const previewPath = `/preview/${previewId}/`;
 
     return {
       previewId,
       slug,
       checksum,
-      previewUrl: publicBase ? `${publicBase}${previewPath}` : previewPath,
+      previewUrl: previewPath,
       storedZip,
     };
   }
@@ -106,12 +103,13 @@ export class DeploymentService implements OnModuleInit {
     const finalZip = join(this.files.tempRoot, 'packages', `${slug}.zip`);
     copyFileSync(storedZip, finalZip);
 
-    const masterUrl = (
-      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
-    ).replace(/\/$/, '');
-    const publicBase = (
-      this.config.get<string>('publicBaseUrl') || ''
-    ).replace(/\/$/, '');
+    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
+    const publicBaseUrl = this.config.get<string>('publicBaseUrl');
+    let publicBase = '';
+    if (publicBaseUrl) {
+      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+    }
     const packagePath = `/api/internal/landings/${slug}/package`;
     const idempotencyKey = `landing:${slug}:v${version}:${checksum}`;
 
@@ -169,12 +167,13 @@ export class DeploymentService implements OnModuleInit {
     const landing = await this.prisma.landing.findUnique({ where: { slug } });
     if (!landing) throw new NotFoundException('لندینگ یافت نشد');
 
-    const masterUrl = (
-      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
-    ).replace(/\/$/, '');
-    const publicBase = (
-      this.config.get<string>('publicBaseUrl') || ''
-    ).replace(/\/$/, '');
+    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
+    const publicBaseUrl = this.config.get<string>('publicBaseUrl');
+    let publicBase = '';
+    if (publicBaseUrl) {
+      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+    }
     const packagePath = `/api/internal/landings/${slug}/package`;
     // استفاده از Date.now() برای force کردن سینک حتی اگر نسخه عوض نشده باشد
     const idempotencyKey = `landing:${slug}:v${landing.version}:${landing.checksum}:force:${Date.now()}`;
@@ -218,12 +217,13 @@ export class DeploymentService implements OnModuleInit {
 
   /** لیست لندینگ‌ها و فرم‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
   async getSyncManifest() {
-    const masterUrl = (
-      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
-    ).replace(/\/$/, '');
-    const publicBase = (
-      this.config.get<string>('publicBaseUrl') || ''
-    ).replace(/\/$/, '');
+    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
+    const publicBaseUrl = this.config.get<string>('publicBaseUrl');
+    let publicBase = '';
+    if (publicBaseUrl) {
+      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+    }
     const packagePath = (slug: string) =>
       `/api/internal/landings/${slug}/package`;
 

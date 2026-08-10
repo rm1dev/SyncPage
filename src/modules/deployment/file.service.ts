@@ -153,4 +153,101 @@ export class FileService {
     const dir = join(this.tempRoot, 'preview', previewId);
     if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
   }
+
+  // -------------------------------------------------------------------
+  //  Landing File Manager
+  // -------------------------------------------------------------------
+
+  /** جلوگیری از path traversal — مسیر باید داخل پوشه لندینگ باشه */
+  private resolveSafePath(slug: string, relPath: string): string {
+    if (!/^[a-z0-9-_]+$/i.test(slug)) {
+      throw new Error('Invalid slug');
+    }
+    const base = join(this.staticRoot, slug);
+    const resolved = join(base, relPath);
+    if (!resolved.startsWith(base)) {
+      throw new Error('Path traversal detected');
+    }
+    return resolved;
+  }
+
+  /** ساختار درختی فایل‌های لندینگ */
+  listLandingFiles(slug: string): FileTreeNode[] {
+    const base = join(this.staticRoot, slug);
+    if (!existsSync(base)) return [];
+    return this.buildTree(base, '');
+  }
+
+  private buildTree(absDir: string, relDir: string): FileTreeNode[] {
+    const entries = readdirSync(absDir, { withFileTypes: true });
+    const nodes: FileTreeNode[] = [];
+    for (const entry of entries) {
+      if (entry.name === '.syncpage-meta.json') continue;
+      if (entry.name === '.DS_Store') continue;
+      const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
+      const absPath = join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        nodes.push({
+          name: entry.name,
+          type: 'directory',
+          path: relPath,
+          children: this.buildTree(absPath, relPath),
+        });
+      } else {
+        const stat = statSync(absPath);
+        nodes.push({
+          name: entry.name,
+          type: 'file',
+          path: relPath,
+          size: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+        });
+      }
+    }
+    // پوشه‌ها اول، بعد فایل‌ها — مرتب بر اساس نام
+    return nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  /** خواندن محتوای فایل */
+  readLandingFile(
+    slug: string,
+    relPath: string,
+  ): { content: string; size: number } {
+    const absPath = this.resolveSafePath(slug, relPath);
+    if (!existsSync(absPath)) throw new Error('File not found');
+    const stat = statSync(absPath);
+    if (stat.isDirectory()) throw new Error('Path is a directory');
+    if (stat.size > 5 * 1024 * 1024)
+      throw new Error('File too large to edit (max 5MB)');
+    const content = readFileSync(absPath, 'utf8');
+    return { content, size: stat.size };
+  }
+
+  /** ذخیره محتوای فایل */
+  writeLandingFile(slug: string, relPath: string, content: string): void {
+    const absPath = this.resolveSafePath(slug, relPath);
+    if (!existsSync(absPath)) throw new Error('File not found');
+    if (statSync(absPath).isDirectory()) throw new Error('Path is a directory');
+    writeFileSync(absPath, content, 'utf8');
+  }
+
+  /** مسیر فیزیکی فایل برای دانلود */
+  getLandingFilePath(slug: string, relPath: string): string {
+    const absPath = this.resolveSafePath(slug, relPath);
+    if (!existsSync(absPath)) throw new Error('File not found');
+    if (statSync(absPath).isDirectory()) throw new Error('Path is a directory');
+    return absPath;
+  }
+}
+
+export interface FileTreeNode {
+  name: string;
+  type: 'file' | 'directory';
+  path: string;
+  size?: number;
+  modifiedAt?: string;
+  children?: FileTreeNode[];
 }

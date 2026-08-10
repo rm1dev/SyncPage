@@ -240,11 +240,14 @@ export class FormEngineService {
         createdAt: submission.createdAt.toISOString(),
       });
     } else {
-      // اگر روی Master هستیم، مستقیما وب‌هوک را فایر می‌کنیم
-      await this.webhook.dispatch(form, {
+      // اگر روی Master هستیم، مستقیما وب‌هوک را فایر می‌کنیم (به صورت پس‌زمینه تا ریسپانس بلوکه نشود)
+      this.webhook.dispatch(form, {
         id: submission.id,
         payload: submission.payload as Record<string, unknown>,
         createdAt: submission.createdAt,
+      }).catch(err => {
+        // خطاهای dispatch معمولا لاگ می‌شوند اما اگر استثنایی رخ داد اینجا شکار می‌شود
+        console.error('Error dispatching webhook in background:', err);
       });
     }
 
