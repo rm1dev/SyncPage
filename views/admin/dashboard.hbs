@@ -142,7 +142,7 @@
             {{pendingSyncCount}} رویداد در صف ارسال
           </span>
         {{/if}}
-        <form method="POST" action="/spadmin/deploy/sync-all" style="margin: 0;">
+        <form method="POST" action="/spadmin/landings/sync-all" style="margin: 0;">
           <button type="submit" class="btn btn-subtle" style="font-size: 0.85rem;" title="ارسال مجدد همه لندینگ‌ها به تمام نودهای متصل">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             <span>سینک همه لندینگ‌ها</span>
@@ -173,7 +173,7 @@
             <a href="/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener">
               <span>مشاهده</span>
             </a>
-            <form method="POST" action="/spadmin/deploy/sync/{{slug}}" style="margin: 0;">
+            <form method="POST" action="/spadmin/landings/sync/{{slug}}" style="margin: 0;">
               <button type="submit" class="btn-subtle" style="color: #6366f1;" title="ارسال مجدد این لندینگ به صف همگام‌سازی">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               </button>

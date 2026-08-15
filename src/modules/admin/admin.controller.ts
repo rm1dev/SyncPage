@@ -362,10 +362,10 @@ export class AdminController {
     }
   }
 
-  @Get('deploy')
+  @Get('landings')
   @UseGuards(AdminTokenGuard)
-  @Render('admin/deploy')
-  deployPage(
+  @Render('admin/landings')
+  async landingsPage(
     @Query('previewId') previewId?: string,
     @Query('slug') slug?: string,
     @Query('checksum') checksum?: string,
@@ -373,10 +373,30 @@ export class AdminController {
     @Query('flash') flash?: string,
     @Query('error') error?: string,
   ) {
+    const rawLandings = await this.deployment.listLandings();
+    const pendingSyncCount = await this.outbox.getMasterPendingSyncCount();
+
+    const landings = rawLandings.map((l) => {
+      const d = new Date(l.updatedAt);
+      const j = (d as any).jalali;
+      const jdateStr = j
+        ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        : d.toLocaleString('fa-IR');
+
+      return {
+        ...l,
+        checksumShort: l.checksum ? l.checksum.slice(0, 12) + '…' : '—',
+        updatedAtFa: jdateStr,
+        isActive: l.status === 'ACTIVE',
+      };
+    });
+
     return {
       layout: 'main',
-      title: 'استقرار',
-      active: 'deploy',
+      title: 'مدیریت لندینگ‌ها',
+      active: 'landings',
+      landings,
+      pendingSyncCount,
       previewId,
       slug,
       checksum,
@@ -384,6 +404,95 @@ export class AdminController {
       flash,
       error,
     };
+  }
+
+  @Post('landings/upload')
+  @UseGuards(AdminTokenGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(process.env.TEMP_PATH || './temp', 'uploads');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          cb(null, `${Date.now()}-${file.originalname}`);
+        },
+      }),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async uploadLanding(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('slug') slug: string,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!file) throw new BadRequestException('فایل ZIP الزامی است');
+      const result = await this.deployment.uploadPreview(slug, file.path);
+      const q = new URLSearchParams({
+        previewId: result.previewId,
+        slug: result.slug,
+        checksum: result.checksum,
+        previewUrl: result.previewUrl,
+      });
+      return res.redirect(`/spadmin/landings?${q.toString()}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'بارگذاری ناموفق بود';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('landings/confirm')
+  @UseGuards(AdminTokenGuard)
+  async confirmLanding(
+    @Body() body: { previewId: string; slug: string },
+    @Res() res: Response,
+  ) {
+    try {
+      await this.deployment.confirm(body.previewId, body.slug);
+      return res.redirect(
+        `/spadmin/landings?flash=${encodeURIComponent('لندینگ با موفقیت مستقر شد و در صف همگام‌سازی قرار گرفت')}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'استقرار با خطا مواجه شد';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('landings/sync-all')
+  @UseGuards(AdminTokenGuard)
+  async syncAllLandingsPage(@Res() res: Response) {
+    try {
+      const result = await this.deployment.syncAll();
+      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
+      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Post('landings/sync/:slug')
+  @UseGuards(AdminTokenGuard)
+  async syncSingleLandingPage(@Param('slug') slug: string, @Res() res: Response) {
+    try {
+      await this.deployment.syncSingle(slug);
+      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
+      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Get('deploy')
+  @UseGuards(AdminTokenGuard)
+  deployPageRedirect(@Res() res: Response) {
+    return res.redirect('/spadmin/landings');
   }
 
   @Post('deploy/upload')
@@ -417,11 +526,11 @@ export class AdminController {
         checksum: result.checksum,
         previewUrl: result.previewUrl,
       });
-      return res.redirect(`/spadmin/deploy?${q.toString()}`);
+      return res.redirect(`/spadmin/landings?${q.toString()}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       return res.redirect(
-        `/spadmin/deploy?error=${encodeURIComponent(message)}`,
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -435,12 +544,12 @@ export class AdminController {
     try {
       await this.deployment.confirm(body.previewId, body.slug);
       return res.redirect(
-        `/spadmin?flash=${encodeURIComponent('لندینگ مستقر و در صف همگام‌سازی قرار گرفت')}`,
+        `/spadmin/landings?flash=${encodeURIComponent('لندینگ مستقر و در صف همگام‌سازی قرار گرفت')}`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Confirm failed';
       return res.redirect(
-        `/spadmin/deploy?error=${encodeURIComponent(message)}`,
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
       );
     }
   }
@@ -450,10 +559,10 @@ export class AdminController {
   async syncAllLandings(@Res() res: Response) {
     try {
       const result = await this.deployment.syncAll();
-      return res.redirect(`/spadmin?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
+      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
-      return res.redirect(`/spadmin?error=${encodeURIComponent(message)}`);
+      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
     }
   }
 
@@ -462,10 +571,10 @@ export class AdminController {
   async syncSingleLanding(@Param('slug') slug: string, @Res() res: Response) {
     try {
       await this.deployment.syncSingle(slug);
-      return res.redirect(`/spadmin?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
+      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
-      return res.redirect(`/spadmin?error=${encodeURIComponent(message)}`);
+      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
     }
   }
 
