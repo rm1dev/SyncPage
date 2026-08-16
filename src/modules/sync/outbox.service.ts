@@ -18,9 +18,7 @@ import {
 } from './sync.types';
 
 type OutboxPayload =
-  | LandingSyncPayload
-  | FormSyncPayload
-  | FormSubmissionSyncPayload;
+  LandingSyncPayload | FormSyncPayload | FormSubmissionSyncPayload;
 
 export type RabbitHealthStatus = {
   ok: boolean;
@@ -135,9 +133,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   }
 
   private masterQueue() {
-    return (
-      this.config.get<string>('rabbitmqMasterQueue') || 'form.submission'
-    );
+    return this.config.get<string>('rabbitmqMasterQueue') || 'form.submission';
   }
 
   private clearConnection(reason: string) {
@@ -275,7 +271,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
    * برای landing/form.sync: به همه نودها بفرست
    * اگه نودی ثبت نشده، همون صف پیش‌فرض (محلی/سازگاری)
    */
-  private async queuesForEvent(eventType: string, payload?: unknown): Promise<string[]> {
+  private async queuesForEvent(
+    eventType: string,
+    payload?: unknown,
+  ): Promise<string[]> {
     if (eventType === 'form.submission.sync') return [this.masterQueue()];
 
     // اگه هدف یک نود خاص باشه، فقط برای همون نود بفرست
@@ -291,9 +290,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   /** آدرس‌های HTTP مستر برای push — همون منطق sync-pull */
   private masterHttpUrls(path: string): string[] {
     const urls: string[] = [];
-    const master = (
-      this.config.get<string>('masterInternalUrl') || ''
-    ).replace(/\/$/, '');
+    const master = (this.config.get<string>('masterInternalUrl') || '').replace(
+      /\/$/,
+      '',
+    );
     const pub = (this.config.get<string>('publicBaseUrl') || '').replace(
       /\/$/,
       '',
@@ -343,7 +343,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       // هر نقش فقط eventهای مربوط به خودش رو publish می‌کنه
       const eventTypes =
         role === 'MASTER'
-          ? ['landing.sync', 'form.sync', 'setting.sync']
+          ? ['landing.sync', 'form.sync', 'setting.sync', 'landing.delete']
           : ['form.submission.sync'];
 
       const batch = await this.prisma.outboxEvent.findMany({
@@ -472,7 +472,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       data: {
         eventType: 'setting.sync',
         idempotencyKey: `setting:${payload.key}:${Date.now()}`,
-        payload: payload as unknown as Prisma.InputJsonValue,
+        payload: payload,
       },
     });
   }

@@ -1,11 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  rmSync,
-  statSync,
-} from 'fs';
+import { createWriteStream, existsSync, mkdirSync, rmSync, statSync } from 'fs';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
@@ -40,7 +34,7 @@ export interface DownloadHistory {
 @Injectable()
 export class LandingApplyService {
   private readonly logger = new Logger(LandingApplyService.name);
-  
+
   private activeDownload: ActiveDownload | null = null;
   private downloadHistory: DownloadHistory[] = [];
   private readonly maxHistory = 10;
@@ -154,15 +148,15 @@ export class LandingApplyService {
 
     let lastErr: unknown;
     const startTime = Date.now();
-    
+
     for (const url of candidates) {
       try {
         this.logger.log(`Downloading landing package: ${url}`);
         await this.downloadFile(url, dest, payload);
-        
+
         const durationSec = (Date.now() - startTime) / 1000;
         const size = existsSync(dest) ? statSync(dest).size : 0;
-        
+
         this.addHistory({
           slug: payload.slug,
           durationSec,
@@ -170,7 +164,7 @@ export class LandingApplyService {
           status: 'SUCCESS',
           timestamp: new Date().toISOString(),
         });
-        
+
         return;
       } catch (err) {
         lastErr = err;
@@ -178,7 +172,7 @@ export class LandingApplyService {
         this.logger.warn(`Download failed (${url}): ${message}`);
       }
     }
-    
+
     this.addHistory({
       slug: payload.slug,
       durationSec: (Date.now() - startTime) / 1000,
@@ -187,7 +181,7 @@ export class LandingApplyService {
       timestamp: new Date().toISOString(),
       error: lastErr instanceof Error ? lastErr.message : String(lastErr),
     });
-    
+
     throw lastErr instanceof Error
       ? lastErr
       : new Error(`Failed to download package for ${payload.slug}`);
@@ -198,7 +192,11 @@ export class LandingApplyService {
    * مسیر بین‌الملل انتقال‌های طولانی رو وسط راه قطع می‌کنه (aborted)؛
    * به‌جای شروع از صفر، از همون بایتی که رسیدیم ادامه می‌دیم
    */
-  private async downloadFile(url: string, dest: string, payload: LandingSyncPayload) {
+  private async downloadFile(
+    url: string,
+    dest: string,
+    payload: LandingSyncPayload,
+  ) {
     const dir = join(dest, '..');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -209,7 +207,7 @@ export class LandingApplyService {
     let downloaded = 0;
     let total: number | null = null;
     let lastErr: unknown = null;
-    
+
     this.activeDownload = {
       slug: payload.slug,
       version: payload.version,
@@ -244,13 +242,17 @@ export class LandingApplyService {
             maxRedirects: 5,
             headers,
             validateStatus: (s: number) =>
-              downloaded > 0 ? (s === 206 || s === 200 || s === 416) : (s >= 200 && s < 300),
+              downloaded > 0
+                ? s === 206 || s === 200 || s === 416
+                : s >= 200 && s < 300,
           });
 
           if (response.status === 416) {
             // Range Not Satisfiable: دانلود از قبل کامل شده است.
             if (attempt > 0) {
-              this.logger.log(`Download considered complete (416 Range Not Satisfiable): ${url} (${downloaded} bytes)`);
+              this.logger.log(
+                `Download considered complete (416 Range Not Satisfiable): ${url} (${downloaded} bytes)`,
+              );
             }
             return;
           }
@@ -281,29 +283,32 @@ export class LandingApplyService {
           try {
             let lastSpeedCheck = Date.now();
             let bytesSinceLastCheck = 0;
-            
+
             response.data.on('data', (chunk: Buffer) => {
               const now = Date.now();
               downloaded += chunk.length;
               bytesSinceLastCheck += chunk.length;
-              
+
               if (this.activeDownload) {
                 this.activeDownload.downloadedBytes = downloaded;
                 if (total) {
-                  this.activeDownload.progress = Math.round((downloaded / total) * 1000) / 10;
+                  this.activeDownload.progress =
+                    Math.round((downloaded / total) * 1000) / 10;
                 }
-                
+
                 // بروزرسانی سرعت هر ۱ ثانیه
                 const timeDiff = now - lastSpeedCheck;
                 if (timeDiff >= 1000) {
                   const speedBps = (bytesSinceLastCheck / timeDiff) * 1000;
                   this.activeDownload.speedBps = speedBps;
                   this.activeDownload.currentSpeed = this.formatSpeed(speedBps);
-                  
+
                   if (total && speedBps > 0) {
-                    this.activeDownload.etaSeconds = Math.round((total - downloaded) / speedBps);
+                    this.activeDownload.etaSeconds = Math.round(
+                      (total - downloaded) / speedBps,
+                    );
                   }
-                  
+
                   lastSpeedCheck = now;
                   bytesSinceLastCheck = 0;
                 }
@@ -354,7 +359,7 @@ export class LandingApplyService {
 
   async deleteLanding(payload: { slug: string; idempotencyKey: string }) {
     this.logger.log(`Deleting landing ${payload.slug} from edge...`);
-    
+
     // ۱. حذف از دیتابیس لوکال
     const existing = await this.prisma.landing.findUnique({
       where: { slug: payload.slug },
@@ -368,7 +373,11 @@ export class LandingApplyService {
     if (existsSync(staticDir)) {
       rmSync(staticDir, { recursive: true, force: true });
     }
-    const packageZip = join(this.files.tempRoot, 'packages', `${payload.slug}.zip`);
+    const packageZip = join(
+      this.files.tempRoot,
+      'packages',
+      `${payload.slug}.zip`,
+    );
     if (existsSync(packageZip)) {
       rmSync(packageZip, { force: true });
     }

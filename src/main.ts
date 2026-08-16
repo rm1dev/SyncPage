@@ -20,6 +20,8 @@ async function bootstrap() {
     }),
   );
 
+  app.enableShutdownHooks();
+
   const viewsPath = join(process.cwd(), 'views');
   app.engine(
     'hbs',
@@ -39,37 +41,54 @@ async function bootstrap() {
 
   app.useStaticAssets(join(process.cwd(), 'public'), { prefix: '/public/' });
 
-  // روی Master روت دامنه بره به پنل (قبلاً nginx این کار رو می‌کرد)
+  // روی Master روت دامنه بره به پنل
   if (isMaster()) {
-    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.method === 'GET' && (req.path === '/' || req.path === '')) {
-        return res.redirect(302, '/spadmin');
-      }
-      return next();
-    });
+    app.use(
+      (
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction,
+      ) => {
+        if (req.method === 'GET' && (req.path === '/' || req.path === '')) {
+          return res.redirect(302, '/spadmin');
+        }
+        return next();
+      },
+    );
   }
 
   // سرو پیش‌نمایش و fallback استاتیک
   const tempPath = process.env.TEMP_PATH || './temp';
   const staticPath = process.env.STATIC_PAGES_PATH || './static_pages';
+
+  const absTempPath = require('path').isAbsolute(tempPath)
+    ? tempPath
+    : join(process.cwd(), tempPath);
+  const absStaticPath = require('path').isAbsolute(staticPath)
+    ? staticPath
+    : join(process.cwd(), staticPath);
+
   for (const dir of [
-    join(tempPath, 'preview'),
-    join(tempPath, 'packages'),
-    join(tempPath, 'uploads'),
-    staticPath,
+    join(absTempPath, 'preview'),
+    join(absTempPath, 'packages'),
+    join(absTempPath, 'uploads'),
+    absStaticPath,
   ]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
-  app.use('/preview', express.static(join(process.cwd(), tempPath, 'preview')));
-  // لندینگ‌ها مستقیم روی /:slug/ سرو می‌شن (بدون پیشوند /pages)
-  app.use(express.static(staticPath));
+
+  // استفاده از express.static برای سازگاری ۱۰۰٪ با trailing slash در پیش‌نمایش
+  app.use('/preview', express.static(join(absTempPath, 'preview')));
+  app.useStaticAssets(absStaticPath, { prefix: '/' });
+
   // مسیر قدیمی رو ریدایرکت می‌کنیم که لینک‌های قبلی نشکنن
   app.use('/pages', (req: express.Request, res: express.Response) => {
     const target = req.url === '/' ? '/' : req.url;
     res.redirect(301, target);
   });
 
-  const rmqUrl = process.env.RABBITMQ_URL || 'amqp://syncpage:syncpage@localhost:5672';
+  const rmqUrl =
+    process.env.RABBITMQ_URL || 'amqp://syncpage:syncpage@localhost:5672';
   const started: string[] = [];
 
   if (isEdge()) {
@@ -130,9 +149,7 @@ async function bootstrap() {
     // و به‌محض وصل شدن، consumer همگام‌سازی شروع به کار کنه
     void app
       .startAllMicroservices()
-      .then(() =>
-        console.log(`Microservices listening: ${started.join(', ')}`),
-      )
+      .then(() => console.log(`Microservices listening: ${started.join(', ')}`))
       .catch((err) =>
         console.error('Microservices failed to start (HTTP stays up):', err),
       );

@@ -60,11 +60,13 @@ services:
       OUTBOX_MAX_ATTEMPTS: "10"
       SYNCPAGE_GITHUB_REPO: rm1dev/SyncPage
       SYNCPAGE_GITHUB_BRANCH: main
+      DOMAIN: ${DOMAIN:-}
     volumes:
       - static_pages:/app/static_pages
       - temp_data:/app/temp
       # محیط توسعه: mount کردن کدها برای hot-reload
       - ./src:/app/src
+      - ./prisma:/app/prisma:ro
       - ./views:/app/views
       - ./public:/app/public
       - ./package.json:/app/package.json
@@ -75,7 +77,7 @@ services:
       # ایزوله کردن node_modules کانتینر
       - /app/node_modules
     # محیط توسعه: اجرای برنامه با watch
-    command: sh -c "npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
     depends_on:
       db:
         condition: service_healthy
@@ -112,6 +114,7 @@ services:
       - temp_data_edge:/app/temp
       # محیط توسعه: mount کردن کدها برای hot-reload
       - ./src:/app/src
+      - ./prisma:/app/prisma:ro
       - ./views:/app/views
       - ./public:/app/public
       - ./package.json:/app/package.json
@@ -122,7 +125,7 @@ services:
       # ایزوله کردن node_modules کانتینر
       - /app/node_modules
     # محیط توسعه: اجرای برنامه با watch
-    command: sh -c "npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
     depends_on:
       db:
         condition: service_healthy

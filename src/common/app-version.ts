@@ -8,14 +8,23 @@ export function getLocalVersion(): string {
     const pkg = JSON.parse(raw) as { version?: string };
     return String(pkg.version || '0.0.0').replace(/^v/i, '');
   } catch {
-    return String(process.env.npm_package_version || '0.0.0').replace(/^v/i, '');
+    return String(process.env.npm_package_version || '0.0.0').replace(
+      /^v/i,
+      '',
+    );
   }
 }
 
 /** مقایسه semver ساده: منفی = a < b ، صفر = برابر ، مثبت = a > b */
 export function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
-  const pb = b.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pa = a
+    .replace(/^v/i, '')
+    .split('.')
+    .map((x) => parseInt(x, 10) || 0);
+  const pb = b
+    .replace(/^v/i, '')
+    .split('.')
+    .map((x) => parseInt(x, 10) || 0);
   const len = Math.max(pa.length, pb.length, 3);
   for (let i = 0; i < len; i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);

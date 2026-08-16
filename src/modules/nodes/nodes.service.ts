@@ -84,7 +84,10 @@ export class NodesService {
     return this.withInstallMeta(node);
   }
 
-  async update(id: string, dto: UpdateEdgeNodeDto): Promise<EdgeNodeWithInstall> {
+  async update(
+    id: string,
+    dto: UpdateEdgeNodeDto,
+  ): Promise<EdgeNodeWithInstall> {
     await this.getById(id);
     const data: Prisma.EdgeNodeUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title.trim();
@@ -240,6 +243,7 @@ export class NodesService {
     };
     activeDownload?: any;
     downloadHistory?: any[];
+    edgeLandings?: any[];
   } | null> {
     const node = await this.prisma.edgeNode.findUnique({ where: { id } });
     if (!node) return null;
@@ -257,7 +261,10 @@ export class NodesService {
             version: data.version ? String(data.version) : undefined,
             role: data.role ? String(data.role) : undefined,
             nodeId: data.nodeId ? String(data.nodeId) : undefined,
-            pendingSubmissions: typeof data.pendingSubmissions === 'number' ? data.pendingSubmissions : 0,
+            pendingSubmissions:
+              typeof data.pendingSubmissions === 'number'
+                ? data.pendingSubmissions
+                : 0,
             url,
             rabbitmq: rmq
               ? {
@@ -268,6 +275,9 @@ export class NodesService {
               : undefined,
             activeDownload: data.activeDownload,
             downloadHistory: data.downloadHistory,
+            edgeLandings: Array.isArray(data.edgeLandings)
+              ? data.edgeLandings
+              : [],
           };
         }
       } catch {
@@ -314,11 +324,9 @@ export class NodesService {
 
         // چک اتصال نود به صف RabbitMQ
         const rmq = data.rabbitmq as
-          | { ok?: boolean; queue?: string; error?: string }
-          | undefined;
+          { ok?: boolean; queue?: string; error?: string } | undefined;
         if (!rmq || typeof rmq.ok !== 'boolean') {
-          const msg =
-            'وضعیت RabbitMQ در health گزارش نشده — نود را آپدیت کنید';
+          const msg = 'وضعیت RabbitMQ در health گزارش نشده — نود را آپدیت کنید';
           const updated = await this.prisma.edgeNode.update({
             where: { id },
             data: {
@@ -363,10 +371,11 @@ export class NodesService {
             data: {
               status: EdgeNodeStatus.ONLINE,
               lastSeenAt: new Date(),
-              lastError: `HTTP اوکی — Rabbit ناپایدار/قطع (لندینگ از HTTP pull): ${rabbitErr}`.slice(
-                0,
-                500,
-              ),
+              lastError:
+                `HTTP اوکی — Rabbit ناپایدار/قطع (لندینگ از HTTP pull): ${rabbitErr}`.slice(
+                  0,
+                  500,
+                ),
               rabbitStatus: EdgeNodeStatus.OFFLINE,
               rabbitLastError: String(rabbitErr).slice(0, 500),
             },
@@ -374,7 +383,7 @@ export class NodesService {
           this.logger.warn(
             `Node ONLINE via HTTP; Rabbit degraded (${node.title}): ${rabbitErr}`,
           );
-          
+
           const result = this.withInstallMeta(updated) as any;
           result.pendingSubmissions = data.pendingSubmissions || 0;
           result.activeDownload = data.activeDownload || null;
@@ -396,7 +405,7 @@ export class NodesService {
         this.logger.log(
           `Node verified online (HTTP+Rabbit): ${node.title} via ${url}`,
         );
-        
+
         // خروجی را برای ادمین داشبورد بهبود می‌دیم تا دانلود و لندینگ‌ها هم برگردن
         const result = this.withInstallMeta(updated) as any;
         result.pendingSubmissions = data.pendingSubmissions || 0;
@@ -442,10 +451,12 @@ export class NodesService {
     const masterUrl = (
       this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
     ).replace(/\/$/, '');
-    const publicBase = (
-      this.config.get<string>('publicBaseUrl') || ''
-    ).replace(/\/$/, '');
-    const packagePath = (slug: string) => `/api/internal/landings/${slug}/package`;
+    const publicBase = (this.config.get<string>('publicBaseUrl') || '').replace(
+      /\/$/,
+      '',
+    );
+    const packagePath = (slug: string) =>
+      `/api/internal/landings/${slug}/package`;
 
     for (const landing of landings) {
       const idempotencyKey = `landing:${landing.slug}:node:${node.id}:v${landing.version}:${Date.now()}`;
@@ -459,14 +470,20 @@ export class NodesService {
             version: landing.version,
             checksum: landing.checksum,
             downloadUrl: `${masterUrl}${packagePath(landing.slug)}`,
-            ...(publicBase ? { downloadUrlFallback: `${publicBase}${packagePath(landing.slug)}` } : {}),
+            ...(publicBase
+              ? {
+                  downloadUrlFallback: `${publicBase}${packagePath(landing.slug)}`,
+                }
+              : {}),
             targetQueue: node.queueName,
-          } as Prisma.InputJsonValue,
+          },
         },
       });
     }
 
-    this.logger.log(`Queued ${landings.length} landings to sync specifically for node ${node.title}`);
+    this.logger.log(
+      `Queued ${landings.length} landings to sync specifically for node ${node.title}`,
+    );
   }
 
   /** صف‌های همه نودها برای Outbox */

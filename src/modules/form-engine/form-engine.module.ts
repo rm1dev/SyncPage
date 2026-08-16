@@ -10,7 +10,17 @@ import { IntegrationProfileService } from './integration-profile.service';
 @Module({
   imports: [forwardRef(() => SyncModule)],
   controllers: [FormEngineController],
-  providers: [FormEngineService, WebhookService, KavenegarService, IntegrationProfileService],
-  exports: [FormEngineService, WebhookService, KavenegarService, IntegrationProfileService],
+  providers: [
+    FormEngineService,
+    WebhookService,
+    KavenegarService,
+    IntegrationProfileService,
+  ],
+  exports: [
+    FormEngineService,
+    WebhookService,
+    KavenegarService,
+    IntegrationProfileService,
+  ],
 })
 export class FormEngineModule {}

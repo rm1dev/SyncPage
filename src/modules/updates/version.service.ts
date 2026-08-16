@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import {
-  getLocalVersion,
-  isOutdated,
-} from '../../common/app-version';
+import { getLocalVersion, isOutdated } from '../../common/app-version';
 import { NodesService } from '../nodes/nodes.service';
 
 export type UpdateStatus = {
@@ -30,9 +27,8 @@ export type NodeVersionRow = {
 @Injectable()
 export class VersionService {
   private readonly logger = new Logger(VersionService.name);
-  private cache:
-    | { at: number; latest: string | null; error?: string }
-    | null = null;
+  private cache: { at: number; latest: string | null; error?: string } | null =
+    null;
   private readonly cacheMs = 5 * 60 * 1000;
 
   constructor(

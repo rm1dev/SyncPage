@@ -1,10 +1,5 @@
 import { Controller, Logger } from '@nestjs/common';
-import {
-  Ctx,
-  EventPattern,
-  Payload,
-  RmqContext,
-} from '@nestjs/microservices';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isEdge, isMaster } from '../../config/role';
@@ -29,9 +24,7 @@ export class SyncConsumerController {
   @EventPattern('landing.sync')
   async handleLandingSync(
     @Payload()
-    raw:
-      | LandingSyncPayload
-      | { pattern?: string; data?: LandingSyncPayload },
+    raw: LandingSyncPayload | { pattern?: string; data?: LandingSyncPayload },
     @Ctx() context: RmqContext,
   ) {
     const channel = context.getChannelRef();
@@ -70,7 +63,9 @@ export class SyncConsumerController {
   @EventPattern('landing.delete')
   async handleLandingDelete(
     @Payload()
-    raw: { slug: string; idempotencyKey: string } | { pattern?: string; data?: { slug: string; idempotencyKey: string } },
+    raw:
+      | { slug: string; idempotencyKey: string }
+      | { pattern?: string; data?: { slug: string; idempotencyKey: string } },
     @Ctx() context: RmqContext,
   ) {
     const channel = context.getChannelRef();
@@ -145,7 +140,9 @@ export class SyncConsumerController {
             body: payload.form.body as Prisma.InputJsonValue,
             webhookUrl: payload.form.webhookUrl || null,
             googleSheetUrl: payload.form.googleSheetUrl || null,
-            googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            googleSheetMeta: payload.form.googleSheetMeta
+              ? (payload.form.googleSheetMeta as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             otpEnabled: payload.form.otpEnabled || false,
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
@@ -159,7 +156,9 @@ export class SyncConsumerController {
             body: payload.form.body as Prisma.InputJsonValue,
             webhookUrl: payload.form.webhookUrl || null,
             googleSheetUrl: payload.form.googleSheetUrl || null,
-            googleSheetMeta: payload.form.googleSheetMeta ? (payload.form.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            googleSheetMeta: payload.form.googleSheetMeta
+              ? (payload.form.googleSheetMeta as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             otpEnabled: payload.form.otpEnabled || false,
             otpField: payload.form.otpField || 'mobile',
             otpTemplate: payload.form.otpTemplate || 'verify',
@@ -171,7 +170,9 @@ export class SyncConsumerController {
       }
 
       await this.landingApply.markProcessed(payload.idempotencyKey);
-      this.logger.log(`Form synced on edge: ${payload.key} (${payload.action})`);
+      this.logger.log(
+        `Form synced on edge: ${payload.key} (${payload.action})`,
+      );
       channel.ack(originalMsg);
     } catch (err) {
       this.fail(err, channel, originalMsg);
@@ -238,7 +239,13 @@ export class SyncConsumerController {
       if (
         !payloadRaw?.idempotencyKey ||
         !payloadRaw.submissionId ||
-        !payloadRaw.formKey
+        !payloadRaw.formKey ||
+        !payloadRaw.createdAt ||
+        !Number.isInteger(payloadRaw.syncVersion) ||
+        payloadRaw.syncVersion < 1 ||
+        !['NOT_REQUIRED', 'UNVERIFIED', 'VERIFIED'].includes(
+          payloadRaw.otpStatus,
+        )
       ) {
         this.logger.error('Invalid form.submission.sync payload');
         channel.ack(originalMsg);
@@ -258,36 +265,50 @@ export class SyncConsumerController {
       }
 
       const payload = { ...payloadRaw.payload };
-      const otpStatus = payload.__otpStatus ? String(payload.__otpStatus) : null;
-      delete payload.__otpStatus;
-
-      await this.prisma.formSubmission.upsert({
+      const existing = await this.prisma.formSubmission.findUnique({
         where: { id: payloadRaw.submissionId },
-        create: {
-          id: payloadRaw.submissionId,
-          formId: form.id,
-          edgeNodeId: payloadRaw.edgeNodeId || null,
-          payload: payload as Prisma.InputJsonValue,
-          otpStatus,
-          createdAt: new Date(payloadRaw.createdAt),
-        },
-        update: {
-          edgeNodeId: payloadRaw.edgeNodeId || null,
-          otpStatus,
-        },
       });
+      const isNewer = !existing || payloadRaw.syncVersion > existing.syncVersion;
+
+      if (isNewer) {
+        await this.prisma.formSubmission.upsert({
+          where: { id: payloadRaw.submissionId },
+          create: {
+            id: payloadRaw.submissionId,
+            formId: form.id,
+            edgeNodeId: payloadRaw.edgeNodeId || null,
+            payload: payload as Prisma.InputJsonValue,
+            otpStatus: payloadRaw.otpStatus,
+            syncVersion: payloadRaw.syncVersion,
+            createdAt: new Date(payloadRaw.createdAt),
+            verifiedAt: payloadRaw.verifiedAt
+              ? new Date(payloadRaw.verifiedAt)
+              : null,
+          },
+          update: {
+            edgeNodeId: payloadRaw.edgeNodeId || null,
+            otpStatus: payloadRaw.otpStatus,
+            syncVersion: payloadRaw.syncVersion,
+            verifiedAt: payloadRaw.verifiedAt
+              ? new Date(payloadRaw.verifiedAt)
+              : null,
+          },
+        });
+      }
 
       await this.landingApply.markProcessed(payloadRaw.idempotencyKey);
       this.logger.log(
         `Form submission synced on master: ${payloadRaw.submissionId}`,
       );
 
-      // اجرای وب‌هوک و اتصال گوگل‌شیت به صورت متمرکز روی مستر
-      await this.webhook.dispatch(form, {
-        id: payloadRaw.submissionId,
-        payload: payload as Record<string, unknown>,
-        createdAt: new Date(payloadRaw.createdAt),
-      });
+      // یک لید فقط در زمان ایجاد به یکپارچه‌سازی‌ها ارسال می‌شود؛ تغییر OTP رکورد تکراری نمی‌سازد.
+      if (!existing && isNewer) {
+        await this.webhook.dispatch(form, {
+          id: payloadRaw.submissionId,
+          payload,
+          createdAt: new Date(payloadRaw.createdAt),
+        });
+      }
 
       channel.ack(originalMsg);
     } catch (err) {

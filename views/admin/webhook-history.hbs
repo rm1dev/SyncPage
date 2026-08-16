@@ -1,0 +1,38 @@
+<div class="page-header-title">
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle Sidebar">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <h1>آخرین فراخوانی‌های وب‌هوک</h1>
+  </div>
+  <span class="subtitle">هر تلاش ارسال، وضعیت و پاسخ دریافتی از سرور مقصد</span>
+</div>
+</header>
+
+<div class="content-wrapper webhook-history" data-endpoint="/spadmin/api/webhook-invocations">
+  <div class="section-header">
+    <span>تاریخچه فراخوانی‌ها</span>
+    <div class="webhook-history-actions">
+      <span id="webhook-history-count" class="status-pill">در حال دریافت...</span>
+      <button id="webhook-history-refresh" type="button" class="btn btn-primary">بروزرسانی</button>
+    </div>
+  </div>
+  <p id="webhook-history-message" class="webhook-history-message" aria-live="polite"></p>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>زمان</th>
+          <th>فرم / تلاش</th>
+          <th>مقصد</th>
+          <th>نتیجه</th>
+          <th>پاسخ سرور</th>
+        </tr>
+      </thead>
+      <tbody id="webhook-history-body">
+        <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">در حال دریافت اطلاعات...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <nav id="webhook-history-pagination" class="webhook-history-pagination" aria-label="صفحه‌بندی فراخوانی‌های وب‌هوک"></nav>
+</div>

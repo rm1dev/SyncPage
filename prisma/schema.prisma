@@ -72,13 +72,50 @@ model FormSubmission {
 
   // وضعیت احراز هویت پیامکی
   otpStatus          String?   // 'VERIFIED', 'UNVERIFIED', 'NOT_REQUIRED'
+  syncVersion        Int       @default(1)
+  verifiedAt         DateTime?
+  otpChallenge       OtpChallenge?
 
   webhookStatus      OutboxStatus @default(SENT)
   webhookAttempts    Int          @default(0)
   webhookLastError   String?
+  webhookInvocations WebhookInvocation[]
 
   @@index([formId])
   @@index([edgeNodeId])
+}
+
+model WebhookInvocation {
+  id             String         @id @default(uuid())
+  submissionId   String
+  submission     FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  attempt        Int
+  requestUrl     String
+  success        Boolean
+  responseStatus Int?
+  responseBody   String?
+  responseHeaders Json?
+  error          String?
+  durationMs     Int?
+  createdAt      DateTime       @default(now())
+
+  @@index([createdAt])
+  @@index([submissionId, createdAt])
+}
+
+model OtpChallenge {
+  id           String         @id @default(uuid())
+  submissionId String         @unique
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  mobile       String
+  codeHash     String
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+  attempts     Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([expiresAt])
 }
 
 // برای نگهداری تنظیمات سراسری مانند API Key کاوه‌نگار
@@ -123,6 +160,46 @@ enum EdgeNodeStatus {
   ERROR
 }
 
+enum SyncOperationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum SyncNodeStatus {
+  QUEUED
+  DEPLOYING
+  COMPLETED
+  FAILED
+  UNREACHABLE
+}
+
+model SyncOperation {
+  id           String              @id @default(uuid())
+  landingSlugs Json
+  status       SyncOperationStatus @default(PENDING)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  nodes        SyncOperationNode[]
+}
+
+model SyncOperationNode {
+  id          String         @id @default(uuid())
+  operationId String
+  nodeId      String
+  status      SyncNodeStatus @default(QUEUED)
+  lastError   String?
+  completedAt DateTime?
+  updatedAt   DateTime       @updatedAt
+  operation   SyncOperation  @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  node        EdgeNode       @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, nodeId])
+  @@index([operationId])
+}
+
 // نودهای Edge که از پنل مدیریت ثبت می‌شن
 model EdgeNode {
   id              String         @id @default(uuid())
@@ -138,6 +215,7 @@ model EdgeNode {
   rabbitLastError String?
   notes           String?
   submissions     FormSubmission[]
+  syncOperations  SyncOperationNode[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

@@ -164,7 +164,7 @@
         {{#each landings}}
         <tr>
           <td>
-            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" target="_blank" rel="noopener" style="font-weight: 600; color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
+            <a href="{{landingUrl}}" target="_blank" rel="noopener" style="font-weight: 600; color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
               <span>{{slug}}</span>
             </a>
@@ -180,7 +180,7 @@
           <td><code>{{checksumShort}}</code></td>
           <td style="color: var(--text-muted); font-size: 0.85rem;">{{updatedAtFa}}</td>
           <td class="actions" style="display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center;">
-            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener" title="مشاهده آنلاین لندینگ">
+            <a href="{{landingUrl}}" class="btn-subtle" target="_blank" rel="noopener" title="مشاهده آنلاین لندینگ">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               <span>مشاهده</span>
             </a>
@@ -248,3 +248,25 @@
     }
   });
 </script>
+
+{{#if operation}}
+<div id="sync-operation-modal" class="sync-operation-modal" data-operation-id="{{operation}}" role="dialog" aria-modal="true" aria-labelledby="sync-operation-title">
+  <div class="sync-operation-backdrop"></div>
+  <section class="sync-operation-panel">
+    <header class="sync-operation-header">
+      <div>
+        <span class="sync-operation-kicker">SYNC PAGE / DEPLOYMENT TRACKER</span>
+        <h2 id="sync-operation-title">پیگیری استقرار روی نودها</h2>
+        <p id="sync-operation-summary">در حال دریافت وضعیت نودها...</p>
+      </div>
+      <button class="sync-operation-close" type="button" aria-label="بستن">×</button>
+    </header>
+    <div id="sync-operation-landings" class="sync-operation-landings"></div>
+    <div id="sync-operation-nodes" class="sync-operation-nodes" aria-live="polite"></div>
+    <footer class="sync-operation-footer">
+      <span>وضعیت هر نود از health خود نود و checksum نسخه مستقرشده تایید می‌شود.</span>
+      <button class="btn btn-secondary sync-operation-close" type="button">بستن پنجره</button>
+    </footer>
+  </section>
+</div>
+{{/if}}

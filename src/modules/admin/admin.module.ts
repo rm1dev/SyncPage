@@ -7,7 +7,13 @@ import { SyncModule } from '../sync/sync.module';
 import { AdminController } from './admin.controller';
 
 @Module({
-  imports: [FormEngineModule, DeploymentModule, NodesModule, UpdatesModule, SyncModule],
+  imports: [
+    FormEngineModule,
+    DeploymentModule,
+    NodesModule,
+    UpdatesModule,
+    SyncModule,
+  ],
   controllers: [AdminController],
 })
 export class AdminModule {}

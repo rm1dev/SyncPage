@@ -17,11 +17,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     ['dragenter', 'dragover'].forEach((eventName) => {
-      uploadArea.addEventListener(eventName, () => uploadArea.classList.add('drag-over'), false);
+      uploadArea.addEventListener(
+        eventName,
+        () => uploadArea.classList.add('drag-over'),
+        false,
+      );
     });
 
     ['dragleave', 'drop'].forEach((eventName) => {
-      uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('drag-over'), false);
+      uploadArea.addEventListener(
+        eventName,
+        () => uploadArea.classList.remove('drag-over'),
+        false,
+      );
     });
 
     uploadArea.addEventListener('drop', (e) => {
@@ -89,14 +97,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabContainer = document.getElementById('form-tabs');
   if (tabContainer) {
     tabContainer.addEventListener('click', (e) => {
-      const btn = /** @type {HTMLElement} */ (e.target).closest('.form-tab-btn');
+      const btn = /** @type {HTMLElement} */ (e.target).closest(
+        '.form-tab-btn',
+      );
       if (!btn) return;
       const targetId = btn.getAttribute('data-tab');
       if (!targetId) return;
 
       // deactivate all
-      tabContainer.querySelectorAll('.form-tab-btn').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.form-tab-panel').forEach((p) => p.classList.remove('active'));
+      tabContainer
+        .querySelectorAll('.form-tab-btn')
+        .forEach((b) => b.classList.remove('active'));
+      document
+        .querySelectorAll('.form-tab-panel')
+        .forEach((p) => p.classList.remove('active'));
 
       // activate clicked
       btn.classList.add('active');
@@ -113,7 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===================================================================
   const profileSelect = document.getElementById('profileId');
   if (profileSelect) {
-    profileSelect.addEventListener('change', function () { handleProfileChange(this); });
+    profileSelect.addEventListener('change', function () {
+      handleProfileChange(this);
+    });
     if (/** @type {HTMLSelectElement} */ (profileSelect).value) {
       handleProfileChange(/** @type {HTMLSelectElement} */ (profileSelect));
     }
@@ -126,7 +142,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (otpCheckbox) {
     otpCheckbox.addEventListener('change', function () {
       const settings = document.getElementById('otp-settings');
-      if (settings) settings.style.display = /** @type {HTMLInputElement} */ (this).checked ? 'block' : 'none';
+      if (settings)
+        settings.style.display = /** @type {HTMLInputElement} */ (this).checked
+          ? 'block'
+          : 'none';
     });
   }
 
@@ -135,9 +154,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===================================================================
   const fieldList = document.getElementById('field-list');
   const addFieldBtn = document.getElementById('add-field-btn');
-  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
-  const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
-  const jsonRawToggle = /** @type {HTMLInputElement} */ (document.getElementById('json-raw-toggle'));
+  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (
+    document.getElementById('body')
+  );
+  const bodyHidden = /** @type {HTMLTextAreaElement} */ (
+    document.getElementById('body-hidden')
+  );
+  const jsonRawToggle = /** @type {HTMLInputElement} */ (
+    document.getElementById('json-raw-toggle')
+  );
   const builderView = document.getElementById('field-builder-view');
   const jsonRawView = document.getElementById('json-raw-view');
 
@@ -295,7 +320,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Remove field (delegated)
     fieldList.addEventListener('click', (e) => {
-      const removeBtn = /** @type {HTMLElement} */ (e.target).closest('.field-remove-btn');
+      const removeBtn = /** @type {HTMLElement} */ (e.target).closest(
+        '.field-remove-btn',
+      );
       if (removeBtn) {
         const row = removeBtn.closest('.field-row');
         if (row) {
@@ -306,7 +333,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       // Options toggle
-      const optionsBtn = /** @type {HTMLElement} */ (e.target).closest('.field-options-btn');
+      const optionsBtn = /** @type {HTMLElement} */ (e.target).closest(
+        '.field-options-btn',
+      );
       if (optionsBtn) {
         const row = optionsBtn.closest('.field-row');
         if (!row) return;
@@ -331,7 +360,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const snippetsRoot = document.querySelector('[data-form-snippets]');
   if (snippetsRoot) {
     const refreshBtn = document.getElementById('refresh-snippets-btn');
-    const keyInput = /** @type {HTMLInputElement} */ (document.getElementById('key'));
+    const keyInput = /** @type {HTMLInputElement} */ (
+      document.getElementById('key')
+    );
     refreshLandingSnippets();
     refreshBtn?.addEventListener('click', () => {
       refreshLandingSnippets();
@@ -340,60 +371,29 @@ document.addEventListener('DOMContentLoaded', () => {
     keyInput?.addEventListener('input', refreshLandingSnippets);
   }
 
-  // --- همگام‌سازی لندینگ (آیکن سینک) ---
-  document.querySelectorAll('form[action*="/landings/sync/"]').forEach(form => {
-    // Avoid double attaching if it's the sync-all form
-    if (form.getAttribute('action')?.endsWith('/sync-all')) return;
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = form.querySelector('button');
-      if (!btn) return;
-      
-      const originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<svg class="icon spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span>سینک...</span>';
-
-      try {
-        const [res] = await Promise.all([
-          fetch(form.action, { method: 'POST' }),
-          new Promise(r => setTimeout(r, 600)) // مکث مصنوعی برای دیده شدن لودینگ
-        ]);
-        if (!res.ok) throw new Error('خطا در همگام‌سازی');
-        showToast('فرمان همگام‌سازی با موفقیت ارسال شد.', 'success');
-      } catch (err) {
-        showToast(err.message, 'danger');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-      }
+  // صفحه مدیریت لندینگ، پاسخ redirect سرور را دنبال می‌کند تا مودال پیگیری
+  // عملیات (پارامتر operation) بلافاصله پس از سینک نمایش داده شود.
+  document
+    .querySelectorAll('form[action*="/landings/sync/"]')
+    .forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button');
+        if (button) button.disabled = true;
+        form.submit();
+      });
     });
-  });
 
-  document.querySelectorAll('form[action$="/landings/sync-all"]').forEach(form => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = form.querySelector('button');
-      if (!btn) return;
-      
-      const originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<svg class="icon spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>در حال ارسال...</span>';
-
-      try {
-        const [res] = await Promise.all([
-          fetch(form.action, { method: 'POST' }),
-          new Promise(r => setTimeout(r, 600)) // مکث مصنوعی برای دیده شدن لودینگ
-        ]);
-        if (!res.ok) throw new Error('خطا در همگام‌سازی سراسری');
-        showToast('فرمان همگام‌سازی سراسری با موفقیت ارسال شد.', 'success');
-      } catch (err) {
-        showToast(err.message, 'danger');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-      }
+  document
+    .querySelectorAll('form[action$="/landings/sync-all"]')
+    .forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button');
+        if (button) button.disabled = true;
+        form.submit();
+      });
     });
-  });
 
   // ===================================================================
   //  FILE MANAGER: مرور، ویرایش و دانلود فایل‌های لندینگ
@@ -443,7 +443,8 @@ function addFieldRow(field) {
   // drag handle
   const dragHandle = document.createElement('div');
   dragHandle.className = 'drag-handle';
-  dragHandle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+  dragHandle.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
 
   // name input
   const nameInput = document.createElement('input');
@@ -479,16 +480,19 @@ function addFieldRow(field) {
   // options button (for select)
   const optionsBtn = document.createElement('button');
   optionsBtn.type = 'button';
-  optionsBtn.className = 'field-options-btn' + (hasOptions ? ' has-options' : '');
+  optionsBtn.className =
+    'field-options-btn' + (hasOptions ? ' has-options' : '');
   optionsBtn.title = 'تنظیم گزینه‌ها (options)';
-  optionsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  optionsBtn.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
   // remove button
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'field-remove-btn';
   removeBtn.title = 'حذف فیلد';
-  removeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+  removeBtn.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
   row.appendChild(dragHandle);
   row.appendChild(nameInput);
@@ -527,10 +531,12 @@ function createOptionsPanel(row) {
   panel.className = 'field-options-panel';
 
   const currentOptions = row.__fieldOptions || [];
-  const optStr = currentOptions.map((o) => {
-    if (o && typeof o === 'object') return String(o.label || o.value || '');
-    return String(o);
-  }).join(', ');
+  const optStr = currentOptions
+    .map((o) => {
+      if (o && typeof o === 'object') return String(o.label || o.value || '');
+      return String(o);
+    })
+    .join(', ');
 
   const labelEl = document.createElement('label');
   labelEl.textContent = 'لیبل (نمایش فارسی فیلد)';
@@ -538,9 +544,12 @@ function createOptionsPanel(row) {
   labelInput.type = 'text';
   labelInput.placeholder = 'مثلاً: نام کامل';
   const hiddenLabel = row.querySelector('[data-field="label"]');
-  labelInput.value = hiddenLabel ? /** @type {HTMLInputElement} */ (hiddenLabel).value : (row.__fieldLabel || '');
+  labelInput.value = hiddenLabel
+    ? /** @type {HTMLInputElement} */ (hiddenLabel).value
+    : row.__fieldLabel || '';
   labelInput.addEventListener('input', () => {
-    if (hiddenLabel) /** @type {HTMLInputElement} */ (hiddenLabel).value = labelInput.value;
+    if (hiddenLabel)
+      /** @type {HTMLInputElement} */ (hiddenLabel).value = labelInput.value;
     row.__fieldLabel = labelInput.value;
     syncBuilderToHidden();
   });
@@ -554,7 +563,10 @@ function createOptionsPanel(row) {
   optInput.value = optStr;
   optInput.dir = 'rtl';
   optInput.addEventListener('input', () => {
-    const parts = optInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = optInput.value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     row.__fieldOptions = parts;
     syncBuilderToHidden();
   });
@@ -576,10 +588,22 @@ function getFieldsFromBuilder() {
   const rows = fieldList.querySelectorAll('.field-row');
   const fields = [];
   rows.forEach((row) => {
-    const name = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="name"]'))?.value?.trim() || '';
-    const type = /** @type {HTMLSelectElement} */ (row.querySelector('[data-field="type"]'))?.value || 'text';
-    const required = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="required"]'))?.checked || false;
-    const label = /** @type {HTMLInputElement} */ (row.querySelector('[data-field="label"]'))?.value?.trim() || name;
+    const name =
+      /** @type {HTMLInputElement} */ (
+        row.querySelector('[data-field="name"]')
+      )?.value?.trim() || '';
+    const type =
+      /** @type {HTMLSelectElement} */ (
+        row.querySelector('[data-field="type"]')
+      )?.value || 'text';
+    const required =
+      /** @type {HTMLInputElement} */ (
+        row.querySelector('[data-field="required"]')
+      )?.checked || false;
+    const label =
+      /** @type {HTMLInputElement} */ (
+        row.querySelector('[data-field="label"]')
+      )?.value?.trim() || name;
     const options = /** @type {any} */ (row).__fieldOptions || [];
 
     if (!name) return; // skip empty rows
@@ -594,14 +618,18 @@ function getFieldsFromBuilder() {
 }
 
 function syncBuilderToHidden() {
-  const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
+  const bodyHidden = /** @type {HTMLTextAreaElement} */ (
+    document.getElementById('body-hidden')
+  );
   if (!bodyHidden) return;
   const fields = getFieldsFromBuilder();
   bodyHidden.value = JSON.stringify(fields, null, 2);
 }
 
 function syncBuilderToTextarea() {
-  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
+  const bodyTextarea = /** @type {HTMLTextAreaElement} */ (
+    document.getElementById('body')
+  );
   if (!bodyTextarea) return;
   const fields = getFieldsFromBuilder();
   bodyTextarea.value = JSON.stringify(fields, null, 2);
@@ -625,8 +653,10 @@ function handleProfileChange(select) {
     integrationFields.style.pointerEvents = 'none';
 
     const option = select.options[select.selectedIndex];
-    document.getElementById('webhookUrl').value = option.getAttribute('data-webhook') || '';
-    document.getElementById('googleSheetUrl').value = option.getAttribute('data-sheet') || '';
+    document.getElementById('webhookUrl').value =
+      option.getAttribute('data-webhook') || '';
+    document.getElementById('googleSheetUrl').value =
+      option.getAttribute('data-sheet') || '';
 
     const metaStr = option.getAttribute('data-meta');
     if (metaStr) {
@@ -634,9 +664,13 @@ function handleProfileChange(select) {
         const meta = JSON.parse(metaStr);
         document.getElementById('startRow').value = meta.startRow || 2;
         if (meta.columns) {
-          document.getElementById('columnMapping').value = JSON.stringify(meta.columns, null, 2);
+          document.getElementById('columnMapping').value = JSON.stringify(
+            meta.columns,
+            null,
+            2,
+          );
         }
-      } catch(e) {}
+      } catch (e) {}
     }
   } else {
     integrationFields.style.opacity = '1';
@@ -653,22 +687,29 @@ function refreshLandingSnippets() {
   const scriptEl = document.getElementById('snippet-script');
   if (!htmlEl || !scriptEl) return;
 
-  const keyInput = /** @type {HTMLInputElement} */ (document.getElementById('key'));
+  const keyInput = /** @type {HTMLInputElement} */ (
+    document.getElementById('key')
+  );
   const key = (keyInput?.value || '').trim() || 'YOUR_FORM_KEY';
 
   // get fields from builder OR from hidden textarea
   let fields = [];
   try {
-    const bodyHidden = /** @type {HTMLTextAreaElement} */ (document.getElementById('body-hidden'));
-    const bodyTextarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('body'));
-    const src = (bodyHidden && !bodyHidden.disabled) ? bodyHidden : bodyTextarea;
+    const bodyHidden = /** @type {HTMLTextAreaElement} */ (
+      document.getElementById('body-hidden')
+    );
+    const bodyTextarea = /** @type {HTMLTextAreaElement} */ (
+      document.getElementById('body')
+    );
+    const src = bodyHidden && !bodyHidden.disabled ? bodyHidden : bodyTextarea;
     if (src) {
       const parsed = JSON.parse(src.value || '[]');
       fields = Array.isArray(parsed) ? parsed : [];
     }
   } catch {
     // fallback: try from builder
-    fields = typeof getFieldsFromBuilder === 'function' ? getFieldsFromBuilder() : [];
+    fields =
+      typeof getFieldsFromBuilder === 'function' ? getFieldsFromBuilder() : [];
   }
 
   const formId = `sp-form-${sanitizeId(key)}`;
@@ -681,11 +722,18 @@ function sanitizeId(value) {
 }
 
 function escapeAttr(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function escapeHtmlText(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function buildLandingFormHtml(formId, fields) {
@@ -698,32 +746,54 @@ function buildLandingFormHtml(formId, fields) {
     const type = String(field.type || 'text').toLowerCase();
 
     if (type === 'textarea') {
-      parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <textarea name="${escapeAttr(name)}"${required}></textarea>\n  </label>`);
+      parts.push(
+        `  <label>\n    ${escapeHtmlText(label)}\n    <textarea name="${escapeAttr(name)}"${required}></textarea>\n  </label>`,
+      );
       continue;
     }
     if (type === 'select') {
       const options = Array.isArray(field.options) ? field.options : [];
-      const opts = options.map((opt) => {
-        if (opt && typeof opt === 'object') {
-          const val = String(opt.value ?? opt.label ?? '');
-          const lab = String(opt.label ?? opt.value ?? '');
-          return `      <option value="${escapeAttr(val)}">${escapeHtmlText(lab)}</option>`;
-        }
-        return `      <option value="${escapeAttr(opt)}">${escapeHtmlText(opt)}</option>`;
-      }).join('\n');
-      parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <select name="${escapeAttr(name)}"${required}>\n${opts}\n    </select>\n  </label>`);
+      const opts = options
+        .map((opt) => {
+          if (opt && typeof opt === 'object') {
+            const val = String(opt.value ?? opt.label ?? '');
+            const lab = String(opt.label ?? opt.value ?? '');
+            return `      <option value="${escapeAttr(val)}">${escapeHtmlText(lab)}</option>`;
+          }
+          return `      <option value="${escapeAttr(opt)}">${escapeHtmlText(opt)}</option>`;
+        })
+        .join('\n');
+      parts.push(
+        `  <label>\n    ${escapeHtmlText(label)}\n    <select name="${escapeAttr(name)}"${required}>\n${opts}\n    </select>\n  </label>`,
+      );
       continue;
     }
     if (type === 'checkbox') {
-      parts.push(`  <label>\n    <input type="checkbox" name="${escapeAttr(name)}" value="1"${required} />\n    ${escapeHtmlText(label)}\n  </label>`);
+      parts.push(
+        `  <label>\n    <input type="checkbox" name="${escapeAttr(name)}" value="1"${required} />\n    ${escapeHtmlText(label)}\n  </label>`,
+      );
       continue;
     }
-    const inputType = ['email', 'tel', 'number', 'password', 'date', 'url', 'hidden'].includes(type) ? type : 'text';
+    const inputType = [
+      'email',
+      'tel',
+      'number',
+      'password',
+      'date',
+      'url',
+      'hidden',
+    ].includes(type)
+      ? type
+      : 'text';
     if (inputType === 'hidden') {
-      parts.push(`  <input type="hidden" name="${escapeAttr(name)}" value="" />`);
+      parts.push(
+        `  <input type="hidden" name="${escapeAttr(name)}" value="" />`,
+      );
       continue;
     }
-    parts.push(`  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`);
+    parts.push(
+      `  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`,
+    );
   }
   parts.push('  <button type="submit">Submit</button>');
   parts.push('</form>');
@@ -731,8 +801,12 @@ function buildLandingFormHtml(formId, fields) {
 }
 
 function buildLandingFormScript(formId, formKey) {
-  const otpEnabled = /** @type {HTMLInputElement} */ (document.getElementById('otpEnabled'))?.checked;
-  const otpField = /** @type {HTMLInputElement} */ (document.getElementById('otpField'))?.value || 'mobile';
+  const otpEnabled = /** @type {HTMLInputElement} */ (
+    document.getElementById('otpEnabled')
+  )?.checked;
+  const otpField =
+    /** @type {HTMLInputElement} */ (document.getElementById('otpField'))
+      ?.value || 'mobile';
 
   if (!otpEnabled) {
     return `<script>
@@ -813,45 +887,49 @@ function buildLandingFormScript(formId, formKey) {
     return utms;
   }
 
-  var pendingOtpData = null;
+  var pendingOtpSubmissionId = null;
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
-    var data = Object.fromEntries(new FormData(form).entries());
-    var utms = getStoredUtms();
-    Object.assign(data, utms);
 
-    if (pendingOtpData) {
+    if (pendingOtpSubmissionId) {
       var code = prompt("لطفا کد تایید پیامک شده را وارد کنید:");
-      if (code) data.__otpCode = code;
-      
-      var qs = window.location.search;
-      var res = await fetch(${JSON.stringify('/api/forms/' + formKey + '/submit')} + qs, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        var err = await res.json().catch(function () { return {}; });
-        alert(err.message || 'خطا در ثبت نهایی فرم');
+      if (!code || !code.trim()) {
+        alert('برای تکمیل ثبت فرم، کد تایید را وارد کنید.');
         return;
       }
-      alert('فرم با موفقیت ثبت شد');
+
+      var verifyRes = await fetch(${JSON.stringify('/api/forms/' + formKey + '/otp/verify')}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: pendingOtpSubmissionId, code: code.trim() }),
+      });
+      if (!verifyRes.ok) {
+        var verifyErr = await verifyRes.json().catch(function () { return {}; });
+        alert(verifyErr.message || 'کد تایید نامعتبر یا منقضی شده است');
+        return;
+      }
+
+      alert('فرم با موفقیت ثبت و تایید شد');
       form.reset();
-      pendingOtpData = null;
+      pendingOtpSubmissionId = null;
       return;
     }
 
+    var data = Object.fromEntries(new FormData(form).entries());
+    var utms = getStoredUtms();
+    Object.assign(data, utms);
     var mobile = data[${JSON.stringify(otpField)}];
     if (!mobile) {
       alert('لطفا فیلد شماره موبایل را پر کنید');
       return;
     }
 
-    var otpRes = await fetch(${JSON.stringify('/api/forms/' + formKey + '/otp')}, {
+    var qs = window.location.search;
+    var otpRes = await fetch(${JSON.stringify('/api/forms/' + formKey + '/otp')} + qs, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mobile: mobile }),
+      body: JSON.stringify(data),
     });
 
     if (!otpRes.ok) {
@@ -860,8 +938,9 @@ function buildLandingFormScript(formId, formKey) {
       return;
     }
 
-    alert('کد تایید ارسال شد. لطفاً فرم را دوباره سابمیت کنید تا کد پرسیده شود.');
-    pendingOtpData = data;
+    var otpResult = await otpRes.json();
+    pendingOtpSubmissionId = otpResult.submissionId;
+    alert('کد تایید ارسال شد. فرم شما ذخیره شده است؛ برای وارد کردن کد دوباره دکمه ثبت را بزنید.');
   });
 })();
 <\/script>`;
@@ -895,9 +974,11 @@ function showToast(message, type = 'success') {
 
 /** آیکن‌های SVG برای گره‌های درخت */
 const FM_ICONS = {
-  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  folder:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
   file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-  caret: '<svg class="ft-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>',
+  caret:
+    '<svg class="ft-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>',
 };
 
 function fmFormatSize(bytes) {
@@ -919,9 +1000,11 @@ function fmLoadCodeMirror() {
     ]);
     const { html } = await import('https://esm.sh/@codemirror/lang-html@6');
     const { css } = await import('https://esm.sh/@codemirror/lang-css@6');
-    const { javascript } = await import('https://esm.sh/@codemirror/lang-javascript@6');
+    const { javascript } =
+      await import('https://esm.sh/@codemirror/lang-javascript@6');
     const { json } = await import('https://esm.sh/@codemirror/lang-json@6');
-    const { oneDark } = await import('https://esm.sh/@codemirror/theme-one-dark@6');
+    const { oneDark } =
+      await import('https://esm.sh/@codemirror/theme-one-dark@6');
     return { view, state, lang, html, css, javascript, json, oneDark };
   })();
   return __cmPromise;
@@ -947,17 +1030,26 @@ function fmLanguageFor(cm, path) {
 
 function initFileManager(root) {
   const treeEl = document.getElementById('file-tree');
-  const landingSelect = /** @type {HTMLSelectElement} */ (document.getElementById('landing-select'));
+  const landingSelect = /** @type {HTMLSelectElement} */ (
+    document.getElementById('landing-select')
+  );
   const editorTitle = document.getElementById('fm-editor-title');
   const editorActions = document.getElementById('fm-editor-actions');
   const emptyState = document.getElementById('fm-empty-state');
   const editorContainer = document.getElementById('fm-editor-container');
-  const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById('fm-editor-textarea'));
+  const textarea = /** @type {HTMLTextAreaElement} */ (
+    document.getElementById('fm-editor-textarea')
+  );
   const saveBtn = document.getElementById('fm-save-file');
-  const downloadFileBtn = /** @type {HTMLAnchorElement} */ (document.getElementById('fm-download-file'));
+  const downloadFileBtn = /** @type {HTMLAnchorElement} */ (
+    document.getElementById('fm-download-file')
+  );
   const slugPill = document.getElementById('fm-slug-pill');
 
-  let slug = root.getAttribute('data-active-slug') || (landingSelect && landingSelect.value) || '';
+  let slug =
+    root.getAttribute('data-active-slug') ||
+    (landingSelect && landingSelect.value) ||
+    '';
   let treeData = [];
   try {
     const raw = document.getElementById('fm-tree-data')?.textContent || '[]';
@@ -983,14 +1075,18 @@ function initFileManager(root) {
       row.setAttribute('data-type', node.type);
 
       if (node.type === 'directory') {
-        row.innerHTML = FM_ICONS.caret + FM_ICONS.folder + '<span class="ft-name"></span>';
+        row.innerHTML =
+          FM_ICONS.caret + FM_ICONS.folder + '<span class="ft-name"></span>';
         const childrenUl = renderTree(node.children || [], li);
         childrenUl.classList.add('ft-children');
         row.addEventListener('click', () => {
           li.classList.toggle('open');
         });
       } else {
-        row.innerHTML = '<span style="width:14px;flex-shrink:0;"></span>' + FM_ICONS.file + '<span class="ft-name"></span><span class="ft-size"></span>';
+        row.innerHTML =
+          '<span style="width:14px;flex-shrink:0;"></span>' +
+          FM_ICONS.file +
+          '<span class="ft-name"></span><span class="ft-size"></span>';
         row.querySelector('.ft-size').textContent = fmFormatSize(node.size);
         row.addEventListener('click', () => {
           openFile(node.path, row);
@@ -1009,7 +1105,8 @@ function initFileManager(root) {
     if (!treeEl) return;
     treeEl.innerHTML = '';
     if (!nodes || nodes.length === 0) {
-      treeEl.innerHTML = '<div class="fm-empty-state" style="padding:2rem 1rem;"><p>پوشه لندینگ خالی است.</p></div>';
+      treeEl.innerHTML =
+        '<div class="fm-empty-state" style="padding:2rem 1rem;"><p>پوشه لندینگ خالی است.</p></div>';
       return;
     }
     renderTree(nodes, treeEl);
@@ -1024,7 +1121,9 @@ function initFileManager(root) {
       cm.view.lineNumbers(),
       cm.view.highlightActiveLine(),
       cm.view.highlightActiveLineGutter(),
-      cm.lang.syntaxHighlighting(cm.lang.defaultHighlightStyle, { fallback: true }),
+      cm.lang.syntaxHighlighting(cm.lang.defaultHighlightStyle, {
+        fallback: true,
+      }),
       cm.oneDark,
       cm.view.EditorView.lineWrapping,
     ];
@@ -1044,6 +1143,9 @@ function initFileManager(root) {
         state,
         parent: editorContainer,
       });
+      // Force LTR direction on the CodeMirror editor container
+      cmView.dom.style.direction = 'ltr';
+      cmView.dom.style.textAlign = 'left';
     }
   }
 
@@ -1055,14 +1157,21 @@ function initFileManager(root) {
   // --- باز کردن فایل ---
   async function openFile(path, rowEl) {
     if (!slug) return;
-    document.querySelectorAll('.ft-row.active').forEach((r) => r.classList.remove('active'));
+    document
+      .querySelectorAll('.ft-row.active')
+      .forEach((r) => r.classList.remove('active'));
     if (rowEl) rowEl.classList.add('active');
 
     try {
-      const res = await fetch(`/spadmin/files/api/read?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`);
+      const res = await fetch(
+        `/spadmin/files/api/read?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`,
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err.message || 'خواندن فایل ممکن نشد (فایل باینری؟)', 'danger');
+        showToast(
+          err.message || 'خواندن فایل ممکن نشد (فایل باینری؟)',
+          'danger',
+        );
         return;
       }
       const data = await res.json();
@@ -1091,14 +1200,22 @@ function initFileManager(root) {
         const res = await fetch('/spadmin/files/api/write', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug, path: currentPath, content: getEditorContent() }),
+          body: JSON.stringify({
+            slug,
+            path: currentPath,
+            content: getEditorContent(),
+          }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           showToast(err.message || 'ذخیره فایل ناموفق بود', 'danger');
           return;
         }
+        const data = await res.json();
         showToast(`فایل ${currentPath} ذخیره شد.`, 'success');
+        if (data.operationId) {
+          window.location.href = `/spadmin/landings?operation=${encodeURIComponent(data.operationId)}`;
+        }
       } catch {
         showToast('خطا در ذخیره فایل', 'danger');
       } finally {
@@ -1121,15 +1238,207 @@ function initFileManager(root) {
   const urlParams = new URLSearchParams(window.location.search);
   const initialPath = urlParams.get('path');
   if (initialPath) {
-    const row = treeEl ? treeEl.querySelector(`.ft-row[data-path="${CSS.escape(initialPath)}"]`) : null;
+    const row = treeEl
+      ? treeEl.querySelector(`.ft-row[data-path="${CSS.escape(initialPath)}"]`)
+      : null;
     // باز کردن گره‌های والد
     if (row) {
       let node = row.closest('.ft-node');
       while (node) {
         node.classList.add('open');
-        node = node.parentElement ? node.parentElement.closest('.ft-node') : null;
+        node = node.parentElement
+          ? node.parentElement.closest('.ft-node')
+          : null;
       }
     }
     openFile(initialPath, row);
   }
 }
+
+function initSyncOperationModal() {
+  const modal = document.getElementById('sync-operation-modal');
+  if (!modal) return;
+  const operationId = modal.getAttribute('data-operation-id');
+  const summary = document.getElementById('sync-operation-summary');
+  const landings = document.getElementById('sync-operation-landings');
+  const nodes = document.getElementById('sync-operation-nodes');
+  let timer;
+
+  const statusLabel = {
+    QUEUED: 'در صف ارسال',
+    DEPLOYING: 'در حال دانلود و استقرار',
+    COMPLETED: 'استقرار تایید شد',
+    FAILED: 'خطا در استقرار',
+    UNREACHABLE: 'نود در دسترس نیست',
+  };
+  const close = () => {
+    window.clearTimeout(timer);
+    modal.remove();
+  };
+  modal
+    .querySelectorAll('.sync-operation-close, .sync-operation-backdrop')
+    .forEach((el) => el.addEventListener('click', close));
+
+  async function refresh() {
+    try {
+      const response = await fetch(
+        `/spadmin/api/sync-operations/${encodeURIComponent(operationId)}`,
+        { headers: { Accept: 'application/json' } },
+      );
+      if (!response.ok) throw new Error('دریافت وضعیت عملیات ناموفق بود');
+      const data = await response.json();
+      const completed = data.nodes.filter(
+        (node) => node.status === 'COMPLETED',
+      ).length;
+      summary.textContent = `${completed} از ${data.nodes.length} نود، استقرار را با checksum تایید کرده‌اند.`;
+      landings.innerHTML = data.landings
+        .map(
+          (landing) =>
+            `<code>${escapeHtml(landing.slug)} v${landing.version}</code>`,
+        )
+        .join('');
+      nodes.innerHTML =
+        data.nodes
+          .map((node) => {
+            const download = node.activeDownload;
+            const progress = download
+              ? Math.max(2, Math.min(100, Number(download.progress || 0)))
+              : node.status === 'COMPLETED'
+                ? 100
+                : 2;
+            const detail = download
+              ? `${formatBytes(download.downloadedBytes)} / ${download.totalBytes ? formatBytes(download.totalBytes) : 'نامشخص'} · ${escapeHtml(download.currentSpeed || '0 B/s')} · ${download.etaSeconds == null ? 'زمان باقی‌مانده نامشخص' : `${download.etaSeconds} ثانیه باقی‌مانده`}`
+              : node.rabbitStatus === 'ONLINE'
+                ? 'RabbitMQ متصل است'
+                : 'RabbitMQ قطع یا نامشخص است؛ HTTP pull همچنان قابل استفاده است';
+            return `<article class="sync-operation-node" data-status="${node.status}"><div class="sync-operation-node-main"><strong class="sync-operation-node-title">${escapeHtml(node.title)}</strong><span class="sync-operation-node-status">${statusLabel[node.status] || node.status}</span></div><div class="sync-operation-progress"><span style="width:${progress}%"></span></div><div class="sync-operation-meta"><span>${detail}</span>${download?.retries ? `<span>${download.retries} تلاش مجدد</span>` : ''}</div>${node.lastError ? `<p class="sync-operation-error">${escapeHtml(node.lastError)}</p>` : ''}</article>`;
+          })
+          .join('') ||
+        '<p style="color:var(--text-muted)">هیچ نود Edge ثبت‌شده‌ای وجود ندارد.</p>';
+      if (!['COMPLETED', 'PARTIAL', 'FAILED'].includes(data.status))
+        timer = window.setTimeout(refresh, 2500);
+    } catch (error) {
+      summary.textContent =
+        error instanceof Error
+          ? error.message
+          : 'دریافت وضعیت عملیات ناموفق بود';
+    }
+  }
+  refresh();
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function escapeHtml(value) {
+  const el = document.createElement('span');
+  el.textContent = String(value || '');
+  return el.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', initSyncOperationModal);
+
+function initWebhookHistory() {
+  const root = document.querySelector('.webhook-history');
+  if (!root) return;
+
+  const endpoint = root.getAttribute('data-endpoint');
+  const body = document.getElementById('webhook-history-body');
+  const count = document.getElementById('webhook-history-count');
+  const message = document.getElementById('webhook-history-message');
+  const pagination = document.getElementById('webhook-history-pagination');
+  const refreshButton = document.getElementById('webhook-history-refresh');
+  let page = 1;
+  const pageSize = 20;
+
+  const formatDate = (value) =>
+    new Intl.DateTimeFormat('fa-IR', {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    }).format(new Date(value));
+  const jsonBlock = (value) =>
+    value
+      ? `<pre>${escapeHtml(typeof value === 'string' ? value : JSON.stringify(value, null, 2))}</pre>`
+      : '';
+
+  async function load(nextPage = page) {
+    page = nextPage;
+    refreshButton.disabled = true;
+    message.textContent = 'در حال بروزرسانی...';
+    message.classList.remove('error');
+    try {
+      const response = await fetch(
+        `${endpoint}?page=${page}&pageSize=${pageSize}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
+      if (!response.ok) throw new Error('دریافت تاریخچه وب‌هوک ناموفق بود');
+      const data = await response.json();
+      const rows = data.items || [];
+      count.textContent = `${data.pagination.total} مورد`;
+      message.textContent = rows.length
+        ? ''
+        : 'هنوز هیچ فراخوانی وب‌هوکی ثبت نشده است.';
+      body.innerHTML =
+        rows
+          .map((item) => {
+            const status = item.success ? 'موفق' : 'ناموفق';
+            const responseStatus = item.responseStatus
+              ? `HTTP ${item.responseStatus}`
+              : 'بدون پاسخ HTTP';
+            const responseDetails = [
+              `<strong>${escapeHtml(responseStatus)}</strong>`,
+              item.durationMs !== null
+                ? `<span>${escapeHtml(item.durationMs)} میلی‌ثانیه</span>`
+                : '',
+              item.error
+                ? `<span style="color: var(--color-danger)">${escapeHtml(item.error)}</span>`
+                : '',
+              item.responseBody ? jsonBlock(item.responseBody) : '',
+              item.responseHeaders
+                ? `<details><summary>هدرهای پاسخ</summary>${jsonBlock(item.responseHeaders)}</details>`
+                : '',
+            ].join('');
+            return `<tr>
+          <td style="white-space: nowrap;">${escapeHtml(formatDate(item.createdAt))}</td>
+          <td><strong>${escapeHtml(item.formTitle)}</strong><br><span style="color: var(--text-muted); font-size: .8rem;">تلاش ${escapeHtml(item.attempt)} · ${escapeHtml(item.nodeTitle)}</span></td>
+          <td><code dir="ltr" style="font-size: .76rem; overflow-wrap: anywhere;">${escapeHtml(item.requestUrl)}</code></td>
+          <td><span class="webhook-result ${item.success ? 'success' : 'failed'}">${status}</span></td>
+          <td><div class="webhook-response-detail">${responseDetails}</div></td>
+        </tr>`;
+          })
+          .join('') ||
+        '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:2rem;">داده‌ای وجود ندارد.</td></tr>';
+
+      const { totalPages, total } = data.pagination;
+      pagination.innerHTML = total
+        ? `<button type="button" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>قبلی</button><span>صفحه ${page} از ${totalPages}</span><button type="button" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>بعدی</button>`
+        : '';
+    } catch (error) {
+      message.textContent =
+        error instanceof Error
+          ? error.message
+          : 'دریافت تاریخچه وب‌هوک ناموفق بود';
+      message.classList.add('error');
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+
+  refreshButton.addEventListener('click', () => load(page));
+  pagination.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-page]');
+    if (button && !button.disabled) load(Number(button.dataset.page));
+  });
+  load();
+}
+
+document.addEventListener('DOMContentLoaded', initWebhookHistory);

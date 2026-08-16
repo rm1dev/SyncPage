@@ -13,6 +13,7 @@ import {
   BadRequestException,
   HttpException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { Response } from 'express';
@@ -43,6 +44,7 @@ export class AdminController {
     private readonly kavenegar: KavenegarService,
     private readonly profiles: IntegrationProfileService,
     private readonly outbox: OutboxService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('login')
@@ -57,10 +59,7 @@ export class AdminController {
   }
 
   @Post('login')
-  login(
-    @Body('token') token: string,
-    @Res() res: Response,
-  ) {
+  login(@Body('token') token: string, @Res() res: Response) {
     const expected = process.env.ADMIN_TOKEN || 'change-me-admin-token';
     if (!token || token !== expected) {
       return res.redirect('/spadmin/login?error=1');
@@ -84,16 +83,12 @@ export class AdminController {
   @Render('admin/dashboard')
   async dashboard(@Query('flash') flash?: string) {
     const forms = await this.forms.list();
-    const landings = await this.deployment.listLandings();
     const nodes = await this.nodes.list();
-    const [masterUpdate, nodesVersion, pendingSyncCount] = await Promise.all([
+    const [masterUpdate, nodesVersion] = await Promise.all([
       this.versions.getMasterStatus(),
       this.versions.getNodesVersionStatus(),
-      this.outbox.getMasterPendingSyncCount(),
     ]);
     const outdatedNodes = nodesVersion.nodes.filter((n) => n.outdated);
-    const publicBaseUrl = process.env.PUBLIC_BASE_URL || '';
-    
     return {
       layout: 'main',
       title: 'داشبورد',
@@ -102,52 +97,73 @@ export class AdminController {
       appVersion: masterUpdate.localVersion,
       masterUpdate,
       outdatedNodes,
-      pendingSyncCount,
       nodeUpdateCommand: nodesVersion.nodeUpdateCommand,
       forms: forms.map((f) => ({
         ...f,
         fieldCount: Array.isArray(f.body) ? f.body.length : 0,
       })),
-      landings: landings.map((l) => ({
-        ...l,
-        checksumShort: l.checksum.slice(0, 12) + '…',
-      })),
       nodeCount: nodes.length,
       onlineCount: nodes.filter((n) => n.status === 'ONLINE').length,
-      publicBaseUrl,
     };
   }
 
   @Get('profiles')
   @UseGuards(AdminTokenGuard)
   @Render('admin/profiles')
-  async profilesPage(@Query('flash') flash?: string, @Query('error') error?: string) {
+  async profilesPage(
+    @Query('flash') flash?: string,
+    @Query('error') error?: string,
+  ) {
     const profiles = await this.profiles.list();
-    return { layout: 'main', title: 'مدیریت پروفایل‌ها', active: 'profiles', flash, error, profiles };
+    return {
+      layout: 'main',
+      title: 'مدیریت پروفایل‌ها',
+      active: 'profiles',
+      flash,
+      error,
+      profiles,
+    };
   }
 
   @Get('profiles/new')
   @UseGuards(AdminTokenGuard)
   @Render('admin/profile-edit')
   newProfile() {
-    return { layout: 'main', title: 'افزودن پروفایل', active: 'profiles', profile: {}, startRow: 2 };
+    return {
+      layout: 'main',
+      title: 'افزودن پروفایل',
+      active: 'profiles',
+      profile: {},
+      startRow: 2,
+    };
   }
 
   @Post('profiles')
   @UseGuards(AdminTokenGuard)
-  async createProfile(@Body() body: Record<string, string>, @Res() res: Response) {
+  async createProfile(
+    @Body() body: Record<string, string>,
+    @Res() res: Response,
+  ) {
     try {
-      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      const columnMapping = body.columnMapping
+        ? JSON.parse(body.columnMapping)
+        : null;
       await this.profiles.create({
         name: body.name,
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
-        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : null,
+        googleSheetMeta: columnMapping
+          ? { startRow: Number(body.startRow) || 2, columns: columnMapping }
+          : null,
       });
-      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل ساخته شد'));
+      return res.redirect(
+        '/spadmin/profiles?flash=' + encodeURIComponent('پروفایل ساخته شد'),
+      );
     } catch (err) {
       return res.status(400).render('admin/profile-edit', {
-        layout: 'main', title: 'افزودن پروفایل', active: 'profiles',
+        layout: 'main',
+        title: 'افزودن پروفایل',
+        active: 'profiles',
         error: err instanceof Error ? err.message : 'Create failed',
         profile: body,
         columnMappingJson: body.columnMapping,
@@ -163,28 +179,47 @@ export class AdminController {
     const profile = await this.profiles.getById(id);
     const meta: any = profile.googleSheetMeta || {};
     return {
-      layout: 'main', title: 'ویرایش پروفایل', active: 'profiles',
+      layout: 'main',
+      title: 'ویرایش پروفایل',
+      active: 'profiles',
       profile,
-      columnMappingJson: meta.columns ? JSON.stringify(meta.columns, null, 2) : '',
+      columnMappingJson: meta.columns
+        ? JSON.stringify(meta.columns, null, 2)
+        : '',
       startRow: meta.startRow || 2,
     };
   }
 
   @Post('profiles/:id')
   @UseGuards(AdminTokenGuard)
-  async updateProfile(@Param('id') id: string, @Body() body: Record<string, string>, @Res() res: Response) {
+  async updateProfile(
+    @Param('id') id: string,
+    @Body() body: Record<string, string>,
+    @Res() res: Response,
+  ) {
     try {
-      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      const columnMapping = body.columnMapping
+        ? JSON.parse(body.columnMapping)
+        : null;
       await this.profiles.update(id, {
         name: body.name,
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
-        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : null,
+        googleSheetMeta: columnMapping
+          ? { startRow: Number(body.startRow) || 2, columns: columnMapping }
+          : null,
       });
-      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل به‌روز شد و تمامی فرم‌های متصل ویرایش شدند.'));
+      return res.redirect(
+        '/spadmin/profiles?flash=' +
+          encodeURIComponent(
+            'پروفایل به‌روز شد و تمامی فرم‌های متصل ویرایش شدند.',
+          ),
+      );
     } catch (err) {
       return res.status(400).render('admin/profile-edit', {
-        layout: 'main', title: 'ویرایش پروفایل', active: 'profiles',
+        layout: 'main',
+        title: 'ویرایش پروفایل',
+        active: 'profiles',
         error: err instanceof Error ? err.message : 'Update failed',
         profile: body,
         columnMappingJson: body.columnMapping,
@@ -198,9 +233,16 @@ export class AdminController {
   async deleteProfile(@Param('id') id: string, @Res() res: Response) {
     try {
       await this.profiles.remove(id);
-      return res.redirect('/spadmin/profiles?flash=' + encodeURIComponent('پروفایل حذف شد'));
+      return res.redirect(
+        '/spadmin/profiles?flash=' + encodeURIComponent('پروفایل حذف شد'),
+      );
     } catch (err) {
-      return res.redirect('/spadmin/profiles?error=' + encodeURIComponent(err instanceof Error ? err.message : 'Delete failed'));
+      return res.redirect(
+        '/spadmin/profiles?error=' +
+          encodeURIComponent(
+            err instanceof Error ? err.message : 'Delete failed',
+          ),
+      );
     }
   }
 
@@ -232,13 +274,17 @@ export class AdminController {
         null,
         2,
       ),
-      columnMappingJson: JSON.stringify({ fullName: "A", mobile: "B" }, null, 2),
+      columnMappingJson: JSON.stringify(
+        { fullName: 'A', mobile: 'B' },
+        null,
+        2,
+      ),
       startRow: 2,
       form: {
         otpEnabled: false,
         otpField: 'mobile',
         otpTemplate: 'verify',
-      }
+      },
     };
   }
 
@@ -256,20 +302,21 @@ export class AdminController {
       form,
       profiles,
       bodyJson: JSON.stringify(form.body, null, 2),
-      columnMappingJson: meta.columns ? JSON.stringify(meta.columns, null, 2) : '',
+      columnMappingJson: meta.columns
+        ? JSON.stringify(meta.columns, null, 2)
+        : '',
       startRow: meta.startRow || 2,
     };
   }
 
   @Post('forms')
   @UseGuards(AdminTokenGuard)
-  async createForm(
-    @Body() body: Record<string, string>,
-    @Res() res: Response,
-  ) {
+  async createForm(@Body() body: Record<string, string>, @Res() res: Response) {
     try {
       const fields = JSON.parse(body.body || '[]');
-      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      const columnMapping = body.columnMapping
+        ? JSON.parse(body.columnMapping)
+        : null;
       await this.forms.create({
         title: body.title,
         key: body.key,
@@ -277,16 +324,22 @@ export class AdminController {
         body: fields,
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
-        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
+        googleSheetMeta: columnMapping
+          ? { startRow: Number(body.startRow) || 2, columns: columnMapping }
+          : undefined,
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
         otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-        sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-        sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
+        sendUtmToWebhook:
+          body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+        sendUtmToSheet:
+          body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
       });
-      return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'));
+      return res.redirect(
+        '/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Save failed';
       return res.status(400).render('admin/form-edit', {
@@ -297,15 +350,20 @@ export class AdminController {
         bodyJson: body.body,
         columnMappingJson: body.columnMapping,
         startRow: body.startRow,
-        form: { 
-          title: body.title, key: body.key, slug: body.slug,
-          webhookUrl: body.webhookUrl, googleSheetUrl: body.googleSheetUrl,
+        form: {
+          title: body.title,
+          key: body.key,
+          slug: body.slug,
+          webhookUrl: body.webhookUrl,
+          googleSheetUrl: body.googleSheetUrl,
           otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
           otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-          sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-          sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
+          sendUtmToWebhook:
+            body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+          sendUtmToSheet:
+            body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         },
       });
     }
@@ -320,23 +378,31 @@ export class AdminController {
   ) {
     try {
       const fields = JSON.parse(body.body || '[]');
-      const columnMapping = body.columnMapping ? JSON.parse(body.columnMapping) : null;
+      const columnMapping = body.columnMapping
+        ? JSON.parse(body.columnMapping)
+        : null;
       await this.forms.update(id, {
         title: body.title,
         slug: body.slug,
         body: fields,
         webhookUrl: body.webhookUrl || null,
         googleSheetUrl: body.googleSheetUrl || null,
-        googleSheetMeta: columnMapping ? { startRow: Number(body.startRow) || 2, columns: columnMapping } : undefined,
+        googleSheetMeta: columnMapping
+          ? { startRow: Number(body.startRow) || 2, columns: columnMapping }
+          : undefined,
         otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
         otpField: body.otpField || 'mobile',
         otpTemplate: body.otpTemplate || 'verify',
         otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-        sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-        sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
+        sendUtmToWebhook:
+          body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+        sendUtmToSheet:
+          body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
       });
-      return res.redirect('/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'));
+      return res.redirect(
+        '/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Update failed';
       const form = await this.forms.getById(id);
@@ -355,8 +421,10 @@ export class AdminController {
           otpField: body.otpField,
           otpTemplate: body.otpTemplate,
           otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-          sendUtmToWebhook: body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-          sendUtmToSheet: body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
+          sendUtmToWebhook:
+            body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
+          sendUtmToSheet:
+            body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         },
         bodyJson: body.body,
         columnMappingJson: body.columnMapping,
@@ -375,6 +443,7 @@ export class AdminController {
     @Query('previewUrl') previewUrl?: string,
     @Query('flash') flash?: string,
     @Query('error') error?: string,
+    @Query('operation') operation?: string,
   ) {
     const rawLandings = await this.deployment.listLandings();
     const pendingSyncCount = await this.outbox.getMasterPendingSyncCount();
@@ -386,15 +455,20 @@ export class AdminController {
         ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
         : d.toLocaleString('fa-IR');
 
+      let landingUrl = `/${l.slug}/`;
+      const domain = this.config.get<string>('domain');
+      if (domain) {
+        landingUrl = `//${domain}/${l.slug}/`;
+      }
+
       return {
         ...l,
         checksumShort: l.checksum ? l.checksum.slice(0, 12) + '…' : '—',
         updatedAtFa: jdateStr,
         isActive: l.status === 'ACTIVE',
+        landingUrl,
       };
     });
-
-    const publicBaseUrl = process.env.PUBLIC_BASE_URL || '';
 
     return {
       layout: 'main',
@@ -408,8 +482,14 @@ export class AdminController {
       previewUrl,
       flash,
       error,
-      publicBaseUrl,
+      operation,
     };
+  }
+
+  @Get('api/sync-operations/:id')
+  @UseGuards(AdminTokenGuard)
+  getSyncOperation(@Param('id') id: string) {
+    return this.deployment.getSyncOperationStatus(id);
   }
 
   @Post('landings/upload')
@@ -445,7 +525,8 @@ export class AdminController {
       });
       return res.redirect(`/spadmin/landings?${q.toString()}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'بارگذاری ناموفق بود';
+      const message =
+        err instanceof Error ? err.message : 'بارگذاری ناموفق بود';
       return res.redirect(
         `/spadmin/landings?error=${encodeURIComponent(message)}`,
       );
@@ -459,12 +540,14 @@ export class AdminController {
     @Res() res: Response,
   ) {
     try {
-      await this.deployment.confirm(body.previewId, body.slug);
+      const landing = await this.deployment.confirm(body.previewId, body.slug);
+      const operation = await this.deployment.trackSyncOperation([body.slug]);
       return res.redirect(
-        `/spadmin/landings?flash=${encodeURIComponent('لندینگ با موفقیت مستقر شد و در صف همگام‌سازی قرار گرفت')}`,
+        `/spadmin/landings?operation=${encodeURIComponent(operation.id)}`,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'استقرار با خطا مواجه شد';
+      const message =
+        err instanceof Error ? err.message : 'استقرار با خطا مواجه شد';
       return res.redirect(
         `/spadmin/landings?error=${encodeURIComponent(message)}`,
       );
@@ -476,22 +559,35 @@ export class AdminController {
   async syncAllLandingsPage(@Res() res: Response) {
     try {
       const result = await this.deployment.syncAll();
-      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
+      return res.redirect(
+        `/spadmin/landings?operation=${encodeURIComponent(result.operationId)}`,
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
-      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+      const message =
+        err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
   @Post('landings/sync/:slug')
   @UseGuards(AdminTokenGuard)
-  async syncSingleLandingPage(@Param('slug') slug: string, @Res() res: Response) {
+  async syncSingleLandingPage(
+    @Param('slug') slug: string,
+    @Res() res: Response,
+  ) {
     try {
-      await this.deployment.syncSingle(slug);
-      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
+      const operation = await this.deployment.syncSingle(slug);
+      return res.redirect(
+        `/spadmin/landings?operation=${encodeURIComponent(operation.id)}`,
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
-      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+      const message =
+        err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -500,10 +596,14 @@ export class AdminController {
   async deleteLanding(@Param('slug') slug: string, @Res() res: Response) {
     try {
       await this.deployment.deleteLanding(slug);
-      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`لندینگ ${slug} حذف شد و دستور حذف به نودها ارسال گردید`)}`);
+      return res.redirect(
+        `/spadmin/landings?flash=${encodeURIComponent(`لندینگ ${slug} حذف شد و دستور حذف به نودها ارسال گردید`)}`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'حذف ناموفق بود';
-      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -577,10 +677,14 @@ export class AdminController {
   async syncAllLandings(@Res() res: Response) {
     try {
       const result = await this.deployment.syncAll();
-      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`);
+      return res.redirect(
+        `/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی ${result.synced} لندینگ آغاز شد`)}`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
-      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -589,10 +693,14 @@ export class AdminController {
   async syncSingleLanding(@Param('slug') slug: string, @Res() res: Response) {
     try {
       await this.deployment.syncSingle(slug);
-      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
+      return res.redirect(
+        `/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
-      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -617,7 +725,10 @@ export class AdminController {
     @Res() res: Response,
   ) {
     await this.kavenegar.setApiKey(apiKey);
-    return res.redirect('/spadmin/settings?flash=' + encodeURIComponent('تنظیمات کاوه‌نگار ذخیره شد'));
+    return res.redirect(
+      '/spadmin/settings?flash=' +
+        encodeURIComponent('تنظیمات کاوه‌نگار ذخیره شد'),
+    );
   }
 
   @Get('submissions')
@@ -670,7 +781,7 @@ export class AdminController {
 
       const payloadObj = s.payload as Record<string, unknown>;
       const utms: { key: string; value: string }[] = [];
-      
+
       // استخراج UTM ها برای نمایش
       if (payloadObj) {
         for (const [key, val] of Object.entries(payloadObj)) {
@@ -705,6 +816,51 @@ export class AdminController {
       otpFilter,
       utmFilter,
       submissions,
+    };
+  }
+
+  @Get('developers/webhook-history')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/webhook-history')
+  webhookHistoryPage() {
+    return {
+      layout: 'main',
+      title: 'فراخوانی‌های وب‌هوک',
+      active: 'webhook-history',
+    };
+  }
+
+  @Get('api/webhook-invocations')
+  @UseGuards(AdminTokenGuard)
+  async webhookInvocations(
+    @Query('page') pageValue?: string,
+    @Query('pageSize') pageSizeValue?: string,
+  ) {
+    const page = Math.max(1, Number.parseInt(pageValue || '1', 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(10, Number.parseInt(pageSizeValue || '20', 10) || 20),
+    );
+    const result = await this.forms.listWebhookInvocations(page, pageSize);
+
+    return {
+      ...result,
+      items: result.items.map((item) => ({
+        id: item.id,
+        attempt: item.attempt,
+        requestUrl: item.requestUrl,
+        success: item.success,
+        responseStatus: item.responseStatus,
+        responseBody: item.responseBody,
+        responseHeaders: item.responseHeaders,
+        error: item.error,
+        durationMs: item.durationMs,
+        createdAt: item.createdAt.toISOString(),
+        formTitle: item.submission.form.title,
+        formKey: item.submission.form.key,
+        submissionId: item.submissionId,
+        nodeTitle: item.submission.edgeNode?.title || 'سرور Master (لوکال)',
+      })),
     };
   }
 
@@ -748,10 +904,16 @@ export class AdminController {
   async retryWebhook(@Param('id') id: string, @Res() res: Response) {
     try {
       await this.webhook.retryFailedWebhook(id);
-      return res.redirect('/spadmin/failed-webhooks?flash=' + encodeURIComponent('وب‌هوک با موفقیت ارسال شد'));
+      return res.redirect(
+        '/spadmin/failed-webhooks?flash=' +
+          encodeURIComponent('وب‌هوک با موفقیت ارسال شد'),
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      return res.redirect('/spadmin/failed-webhooks?error=' + encodeURIComponent(`ارسال مجدد ناموفق بود: ${message}`));
+      return res.redirect(
+        '/spadmin/failed-webhooks?error=' +
+          encodeURIComponent(`ارسال مجدد ناموفق بود: ${message}`),
+      );
     }
   }
 
@@ -772,7 +934,7 @@ export class AdminController {
 
     // پروب کردن سلامتی برای بدست آوردن تعداد سابمیشن‌های منتظر (pending) در Edge
     const probes = await Promise.all(
-      nodes.map(n => this.nodes.probeHealth(n.id))
+      nodes.map((n) => this.nodes.probeHealth(n.id)),
     );
 
     const versionById = new Map(
@@ -826,10 +988,7 @@ export class AdminController {
 
   @Post('nodes')
   @UseGuards(AdminTokenGuard)
-  async createNode(
-    @Body() body: Record<string, string>,
-    @Res() res: Response,
-  ) {
+  async createNode(@Body() body: Record<string, string>, @Res() res: Response) {
     try {
       const node = await this.nodes.create({
         title: body.title,
@@ -869,18 +1028,19 @@ export class AdminController {
     const localVersion = probed?.version || null;
     const versionOutdated =
       !!latest && !!localVersion && isOutdated(localVersion, latest);
-      
+
     // مقایسه نسخه‌ها برای بررسی همگام بودن
     const edgeLandings = (probed as any)?.edgeLandings || [];
     const masterLandings = await this.deployment.listLandings();
-    
-    const landingStatus = masterLandings.map(ml => {
+
+    const landingStatus = masterLandings.map((ml) => {
       const el = edgeLandings.find((e: any) => e.slug === ml.slug);
       return {
         slug: ml.slug,
         masterVersion: ml.version,
         edgeVersion: el ? el.version : 'ندارد',
-        isSynced: el && el.version === ml.version && el.checksum === ml.checksum
+        isSynced:
+          el && el.version === ml.version && el.checksum === ml.checksum,
       };
     });
 
@@ -922,13 +1082,14 @@ export class AdminController {
     const masterLandings = await this.deployment.listLandings();
     const edgeLandings = (probed as any)?.edgeLandings || [];
 
-    const landingStatus = masterLandings.map(ml => {
+    const landingStatus = masterLandings.map((ml) => {
       const el = edgeLandings.find((e: any) => e.slug === ml.slug);
       return {
         slug: ml.slug,
         masterVersion: ml.version,
         edgeVersion: el ? el.version : null,
-        isSynced: el && el.version === ml.version && el.checksum === ml.checksum
+        isSynced:
+          el && el.version === ml.version && el.checksum === ml.checksum,
       };
     });
 
@@ -989,7 +1150,7 @@ export class AdminController {
         if (typeof r === 'string') {
           text = r;
         } else if (r && typeof r === 'object' && 'message' in r) {
-          const m = (r as { message: unknown }).message;
+          const m = r.message;
           text = Array.isArray(m) ? m.join(', ') : String(m);
         } else {
           text = err.message;

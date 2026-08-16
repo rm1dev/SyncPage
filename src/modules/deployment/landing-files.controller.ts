@@ -95,13 +95,17 @@ export class LandingFilesController {
 
   /** JSON: ذخیره فایل */
   @Post('api/write')
-  writeFile(@Body() body: { slug: string; path: string; content: string }) {
+  async writeFile(
+    @Body() body: { slug: string; path: string; content: string },
+  ) {
     if (!body?.slug || !body?.path) {
       throw new BadRequestException('slug, path and content are required');
     }
     try {
       this.files.writeLandingFile(body.slug, body.path, body.content ?? '');
-      return { ok: true };
+      // سینک کردن بعد از ویرایش فایل
+      const operation = await this.deployment.syncSingle(body.slug);
+      return { ok: true, synced: true, operationId: operation.id };
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Write failed',

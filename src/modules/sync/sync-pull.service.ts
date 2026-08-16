@@ -99,7 +99,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
               update: { value: s.value },
             });
           } catch (err) {
-            this.logger.error(`HTTP pull setting apply failed (${s.key}): ${err}`);
+            this.logger.error(
+              `HTTP pull setting apply failed (${s.key}): ${err}`,
+            );
           }
         }
       }
@@ -119,9 +121,10 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private manifestUrls(): string[] {
     const path = '/api/internal/sync/manifest';
     const urls: string[] = [];
-    const master = (
-      this.config.get<string>('masterInternalUrl') || ''
-    ).replace(/\/$/, '');
+    const master = (this.config.get<string>('masterInternalUrl') || '').replace(
+      /\/$/,
+      '',
+    );
     const pub = (this.config.get<string>('publicBaseUrl') || '').replace(
       /\/$/,
       '',
@@ -178,7 +181,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             body: f.body as Prisma.InputJsonValue,
             webhookUrl: f.webhookUrl || null,
             googleSheetUrl: f.googleSheetUrl || null,
-            googleSheetMeta: f.googleSheetMeta ? (f.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            googleSheetMeta: f.googleSheetMeta
+              ? (f.googleSheetMeta as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             otpEnabled: f.otpEnabled || false,
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
@@ -192,7 +197,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             body: f.body as Prisma.InputJsonValue,
             webhookUrl: f.webhookUrl || null,
             googleSheetUrl: f.googleSheetUrl || null,
-            googleSheetMeta: f.googleSheetMeta ? (f.googleSheetMeta as Prisma.InputJsonValue) : Prisma.JsonNull,
+            googleSheetMeta: f.googleSheetMeta
+              ? (f.googleSheetMeta as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             otpEnabled: f.otpEnabled || false,
             otpField: f.otpField || 'mobile',
             otpTemplate: f.otpTemplate || 'verify',
@@ -229,7 +236,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private async cleanupDeletedLandings(landings: ManifestItem[]) {
     try {
       const activeSlugs = new Set(landings.map((l) => l.slug));
-      const locals = await this.prisma.landing.findMany({ select: { slug: true } });
+      const locals = await this.prisma.landing.findMany({
+        select: { slug: true },
+      });
       for (const local of locals) {
         if (!activeSlugs.has(local.slug)) {
           const idempotencyKey = `landing:${local.slug}:delete:sync-pull:${Date.now()}`;
@@ -280,9 +289,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `HTTP pull apply failed (${item.slug}): ${message}`,
-      );
+      this.logger.error(`HTTP pull apply failed (${item.slug}): ${message}`);
     }
   }
 }

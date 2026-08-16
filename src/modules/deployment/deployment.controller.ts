@@ -39,10 +39,7 @@ export class DeploymentController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const dir = join(
-            process.env.TEMP_PATH || './temp',
-            'uploads',
-          );
+          const dir = join(process.env.TEMP_PATH || './temp', 'uploads');
           if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
           cb(null, dir);
         },
@@ -53,7 +50,7 @@ export class DeploymentController {
       fileFilter: (_req, file, cb) => {
         if (!file.originalname.toLowerCase().endsWith('.zip')) {
           return cb(
-            new BadRequestException('Only ZIP files are allowed') as Error,
+            new BadRequestException('Only ZIP files are allowed'),
             false,
           );
         }
@@ -80,10 +77,22 @@ export class DeploymentController {
     return this.deployment.confirm(body.previewId, body.slug);
   }
 
-  /** دانلود داخلی برای Edge — بدون AdminToken، فقط از شبکه داخلی */
+  @Get('api/internal/landings/:slug/package/:packageFile')
+  getImmutablePackage(
+    @Param('slug') slug: string,
+    @Param('packageFile') packageFile: string,
+    @Res() res: Response,
+  ) {
+    const path = this.deployment.getImmutablePackagePath(slug, packageFile);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.download(path, packageFile);
+  }
+
+  /** مسیر قدیمی برای سازگاری با eventهای قبلی */
   @Get('api/internal/landings/:slug/package')
   getPackage(@Param('slug') slug: string, @Res() res: Response) {
     const path = this.deployment.getPackagePath(slug);
+    res.setHeader('Cache-Control', 'no-store');
     res.download(path, `${slug}.zip`);
   }
 

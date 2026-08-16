@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { FileService } from './file.service';
+import { NodesService } from '../nodes/nodes.service';
 
 @Injectable()
 export class DeploymentService implements OnModuleInit {
@@ -18,6 +19,7 @@ export class DeploymentService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly files: FileService,
     private readonly config: ConfigService,
+    private readonly nodesService: NodesService,
   ) {}
 
   onModuleInit() {
@@ -98,19 +100,26 @@ export class DeploymentService implements OnModuleInit {
 
     this.files.checksumDirMarker(slug, version, checksum);
 
-    // ZIP نهایی برای دانلود Edge با نام slug
+    // پکیج تاییدشده را با نام content-addressed نگه می‌داریم تا eventهای
+    // در صف همیشه دقیقا همان بایت‌هایی را دانلود کنند که checksum آن‌هاست.
     const { copyFileSync, unlinkSync } = await import('fs');
-    const finalZip = join(this.files.tempRoot, 'packages', `${slug}.zip`);
+    const packageFile = `${slug}-v${version}-${checksum}.zip`;
+    const finalZip = join(this.files.tempRoot, 'packages', packageFile);
     copyFileSync(storedZip, finalZip);
 
-    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
-    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
+    const masterInternalUrl =
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = masterInternalUrl.endsWith('/')
+      ? masterInternalUrl.slice(0, -1)
+      : masterInternalUrl;
     const publicBaseUrl = this.config.get<string>('publicBaseUrl');
     let publicBase = '';
     if (publicBaseUrl) {
-      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+      publicBase = publicBaseUrl.endsWith('/')
+        ? publicBaseUrl.slice(0, -1)
+        : publicBaseUrl;
     }
-    const packagePath = `/api/internal/landings/${slug}/package`;
+    const packagePath = `/api/internal/landings/${slug}/package/${packageFile}`;
     const idempotencyKey = `landing:${slug}:v${version}:${checksum}`;
 
     const landing = await this.prisma.$transaction(async (tx) => {
@@ -144,7 +153,7 @@ export class DeploymentService implements OnModuleInit {
             ...(publicBase
               ? { downloadUrlFallback: `${publicBase}${packagePath}` }
               : {}),
-          } as Prisma.InputJsonValue,
+          },
         },
       });
 
@@ -164,53 +173,126 @@ export class DeploymentService implements OnModuleInit {
   }
 
   async syncSingle(slug: string) {
+    const operation = await this.createSyncOperation([slug]);
+    await this.syncSingleForOperation(slug, operation.id);
+    return operation;
+  }
+
+  private async syncSingleForOperation(slug: string, operationId: string) {
     const landing = await this.prisma.landing.findUnique({ where: { slug } });
     if (!landing) throw new NotFoundException('لندینگ یافت نشد');
 
-    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
-    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
-    const publicBaseUrl = this.config.get<string>('publicBaseUrl');
-    let publicBase = '';
-    if (publicBaseUrl) {
-      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
-    }
-    const packagePath = `/api/internal/landings/${slug}/package`;
-    // استفاده از Date.now() برای force کردن سینک حتی اگر نسخه عوض نشده باشد
-    const idempotencyKey = `landing:${slug}:v${landing.version}:${landing.checksum}:force:${Date.now()}`;
+    const version = landing.version + 1;
+    const packageInfo = this.files.createImmutableLandingPackage(slug, version);
+    const checksum = packageInfo.checksum;
+    const masterUrl = (
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const publicBase = (this.config.get<string>('publicBaseUrl') || '').replace(
+      /\/$/,
+      '',
+    );
+    const packagePath = `/api/internal/landings/${slug}/package/${packageInfo.fileName}`;
+    const nodes = await this.prisma.edgeNode.findMany();
 
-    await this.prisma.outboxEvent.create({
-      data: {
-        eventType: 'landing.sync',
-        idempotencyKey,
-        payload: {
-          idempotencyKey,
-          slug,
-          version: landing.version,
-          checksum: landing.checksum,
-          downloadUrl: `${masterUrl}${packagePath}`,
-          ...(publicBase ? { downloadUrlFallback: `${publicBase}${packagePath}` } : {}),
-        } as Prisma.InputJsonValue,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.landing.update({
+        where: { slug },
+        data: { version, checksum },
+      });
+
+      for (const node of nodes) {
+        const idempotencyKey = `landing:${slug}:v${version}:${checksum}:node:${node.id}`;
+        await tx.outboxEvent.create({
+          data: {
+            eventType: 'landing.sync',
+            idempotencyKey,
+            payload: {
+              idempotencyKey,
+              operationId,
+              slug,
+              version,
+              checksum,
+              targetQueue: node.queueName,
+              downloadUrl: `${masterUrl}${packagePath}`,
+              ...(publicBase
+                ? { downloadUrlFallback: `${publicBase}${packagePath}` }
+                : {}),
+            },
+          },
+        });
+      }
     });
 
-    return landing;
+    this.files.checksumDirMarker(slug, version, checksum);
   }
 
   async syncAll() {
-    const landings = await this.listLandings();
+    const landings = (await this.listLandings()).filter(
+      (landing) => landing.status === 'ACTIVE',
+    );
+    const operation = await this.createSyncOperation(landings.map((l) => l.slug));
     for (const landing of landings) {
-      if (landing.status === 'ACTIVE') {
-        await this.syncSingle(landing.slug);
-      }
+      await this.syncSingleForOperation(landing.slug, operation.id);
     }
-    return { synced: landings.length };
+    return { synced: landings.length, operationId: operation.id };
+  }
+
+  async trackSyncOperation(landingSlugs: string[]) {
+    return this.createSyncOperation(landingSlugs);
+  }
+
+  private async createSyncOperation(landingSlugs: string[]) {
+    const nodes = await this.prisma.edgeNode.findMany({ select: { id: true } });
+    return this.prisma.syncOperation.create({
+      data: {
+        landingSlugs,
+        status: nodes.length ? 'RUNNING' : 'COMPLETED',
+        nodes: { create: nodes.map((node) => ({ nodeId: node.id })) },
+      },
+    });
+  }
+
+  async getSyncOperationStatus(operationId: string) {
+    const operation = await this.prisma.syncOperation.findUnique({
+      where: { id: operationId },
+      include: { nodes: { include: { node: true }, orderBy: { node: { title: 'asc' } } } },
+    });
+    if (!operation) throw new NotFoundException('عملیات همگام‌سازی پیدا نشد');
+
+    const expected = await this.prisma.landing.findMany({
+      where: { slug: { in: operation.landingSlugs as string[] } },
+      select: { slug: true, version: true, checksum: true },
+    });
+    const nodes = await Promise.all(operation.nodes.map(async (entry) => {
+      const probe = await this.nodesService.probeHealth(entry.nodeId);
+      const active = probe?.activeDownload;
+      const isComplete = !!probe?.ok && expected.every((landing) =>
+        (probe.edgeLandings || []).some((edge: any) => edge.slug === landing.slug && edge.version === landing.version && edge.checksum === landing.checksum),
+      );
+      const status = isComplete ? 'COMPLETED' : !probe?.ok ? 'UNREACHABLE' : active ? 'DEPLOYING' : entry.status;
+      const lastError = !probe?.ok ? 'نود از طریق health در دسترس نیست' : null;
+      if (status !== entry.status || lastError !== entry.lastError) {
+        await this.prisma.syncOperationNode.update({
+          where: { operationId_nodeId: { operationId, nodeId: entry.nodeId } },
+          data: { status, lastError, ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}) },
+        });
+      }
+      return { id: entry.nodeId, title: entry.node.title, status, lastError, activeDownload: active || null, rabbitStatus: probe?.rabbitmq?.ok ? 'ONLINE' : 'OFFLINE' };
+    }));
+    const completed = nodes.filter((node) => node.status === 'COMPLETED').length;
+    const failed = nodes.filter((node) => node.status === 'FAILED' || node.status === 'UNREACHABLE').length;
+    const status = completed === nodes.length ? 'COMPLETED' : completed || failed ? 'PARTIAL' : 'RUNNING';
+    if (status !== operation.status) await this.prisma.syncOperation.update({ where: { id: operationId }, data: { status } });
+    return { id: operationId, status, landings: expected, nodes, createdAt: operation.createdAt };
   }
 
   async deleteLanding(slug: string) {
     const landing = await this.prisma.landing.findUnique({ where: { slug } });
     if (!landing) throw new NotFoundException('لندینگ یافت نشد');
 
-    const idempotencyKey = `landing:${slug}:delete:${Date.now()}`;
+    const { randomUUID } = await import('crypto');
+    const idempotencyKey = `landing:${slug}:delete:${randomUUID()}`;
 
     // تراکنش: حذف لندینگ و افزودن ایونت به Outbox
     await this.prisma.$transaction(async (tx) => {
@@ -219,14 +301,14 @@ export class DeploymentService implements OnModuleInit {
         data: {
           eventType: 'landing.delete',
           idempotencyKey,
-          payload: { slug, idempotencyKey } as Prisma.InputJsonValue,
+          payload: { slug, idempotencyKey },
         },
       });
     });
 
     // حذف فایل‌های فیزیکی
     const { rmSync } = await import('fs');
-    
+
     // ۱. حذف فولدر استاتیک
     const staticDir = join(this.files.staticRoot, slug);
     if (existsSync(staticDir)) {
@@ -242,6 +324,22 @@ export class DeploymentService implements OnModuleInit {
     return { slug };
   }
 
+  getImmutablePackagePath(slug: string, packageFile: string): string {
+    const expectedPrefix = `${slug}-v`;
+    if (
+      !packageFile.startsWith(expectedPrefix) ||
+      !/^[a-z0-9][a-z0-9._-]*\.zip$/i.test(packageFile)
+    ) {
+      throw new NotFoundException('Package not found');
+    }
+
+    const path = join(this.files.tempRoot, 'packages', packageFile);
+    if (!existsSync(path)) {
+      throw new NotFoundException('Package not found');
+    }
+    return path;
+  }
+
   getPackagePath(slug: string): string {
     const path = join(this.files.tempRoot, 'packages', `${slug}.zip`);
     if (!existsSync(path)) {
@@ -253,15 +351,20 @@ export class DeploymentService implements OnModuleInit {
 
   /** لیست لندینگ‌ها و فرم‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
   async getSyncManifest() {
-    const masterInternalUrl = this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
-    const masterUrl = masterInternalUrl.endsWith('/') ? masterInternalUrl.slice(0, -1) : masterInternalUrl;
+    const masterInternalUrl =
+      this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
+    const masterUrl = masterInternalUrl.endsWith('/')
+      ? masterInternalUrl.slice(0, -1)
+      : masterInternalUrl;
     const publicBaseUrl = this.config.get<string>('publicBaseUrl');
     let publicBase = '';
     if (publicBaseUrl) {
-      publicBase = publicBaseUrl.endsWith('/') ? publicBaseUrl.slice(0, -1) : publicBaseUrl;
+      publicBase = publicBaseUrl.endsWith('/')
+        ? publicBaseUrl.slice(0, -1)
+        : publicBaseUrl;
     }
-    const packagePath = (slug: string) =>
-      `/api/internal/landings/${slug}/package`;
+    const packagePath = (slug: string, version: number, checksum: string) =>
+      `/api/internal/landings/${slug}/package/${slug}-v${version}-${checksum}.zip`;
 
     const rows = await this.prisma.landing.findMany({
       where: { status: 'ACTIVE' },
@@ -280,10 +383,13 @@ export class DeploymentService implements OnModuleInit {
         slug: row.slug,
         version: row.version,
         checksum: row.checksum,
-        idempotencyKey: `landing:${row.slug}:v${row.version}:${row.checksum}`,
-        downloadUrl: `${masterUrl}${packagePath(row.slug)}`,
+        // آپدیت اینجا: حتما باید بر اساس updatedAt تایم استمپ بزنیم که اگه تغییر کرد مانیفست تغییر کنه
+        idempotencyKey: `landing:${row.slug}:v${row.version}:${row.checksum}:${row.updatedAt.getTime()}`,
+        downloadUrl: `${masterUrl}${packagePath(row.slug, row.version, row.checksum)}`,
         ...(publicBase
-          ? { downloadUrlFallback: `${publicBase}${packagePath(row.slug)}` }
+          ? {
+              downloadUrlFallback: `${publicBase}${packagePath(row.slug, row.version, row.checksum)}`,
+            }
           : {}),
       })),
       forms: forms.map((f) => ({

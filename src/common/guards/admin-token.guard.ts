@@ -17,9 +17,7 @@ export class AdminTokenGuard implements CanActivate {
 
     const headerToken =
       (req.headers['x-admin-token'] as string | undefined) ||
-      (req.headers.authorization?.replace(/^Bearer\s+/i, '') as
-        | string
-        | undefined);
+      req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
     const cookieHeader = req.headers.cookie || '';
     const cookieMatch = cookieHeader.match(/(?:^|;\s*)admin_token=([^;]+)/);

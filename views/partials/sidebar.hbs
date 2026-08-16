@@ -45,11 +45,25 @@
           <span>لیدها</span>
         </a>
       </li>
-      <li>
-        <a href="/spadmin/failed-webhooks" class="{{#if (eq active 'failed-webhooks')}}active{{/if}}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>خطاهای وب‌هوک</span>
-        </a>
+      <li class="nav-group">
+        <div class="nav-group-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <span>توسعه‌دهندگان</span>
+        </div>
+        <ul class="nav-submenu">
+          <li>
+            <a href="/spadmin/developers/webhook-history" class="{{#if (eq active 'webhook-history')}}active{{/if}}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 16 4-5 3 3 5-7"/></svg>
+              <span>فراخوانی‌های وب‌هوک</span>
+            </a>
+          </li>
+          <li>
+            <a href="/spadmin/failed-webhooks" class="{{#if (eq active 'failed-webhooks')}}active{{/if}}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>خطاهای وب‌هوک</span>
+            </a>
+          </li>
+        </ul>
       </li>
       <li>
         <a href="/spadmin/nodes" class="{{#if (eq active 'nodes')}}active{{/if}}">

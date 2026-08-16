@@ -21,7 +21,7 @@ export class KavenegarService {
       create: { key: 'KAVENEGAR_API_KEY', value: key.trim() },
       update: { value: key.trim() },
     });
-    
+
     // صف کردن رویداد همگام‌سازی تنظیمات برای Edgeها
     if (process.env.NODE_ROLE !== 'EDGE') {
       try {
@@ -35,9 +35,9 @@ export class KavenegarService {
             idempotencyKey: `setting:KAVENEGAR_API_KEY:${Date.now()}`,
             payload: {
               key: 'KAVENEGAR_API_KEY',
-              value: key.trim()
-            }
-          }
+              value: key.trim(),
+            },
+          },
         });
       } catch (err) {
         this.logger.error('Failed to enqueue setting sync', err);
@@ -49,17 +49,23 @@ export class KavenegarService {
    * ارسال OTP با استفاده از متد Lookup کاوه‌نگار
    * https://api.kavenegar.com/v1/{API-KEY}/verify/lookup.json
    */
-  async sendLookupOtp(receptor: string, token: string, template: string): Promise<boolean> {
+  async sendLookupOtp(
+    receptor: string,
+    token: string,
+    template: string,
+  ): Promise<boolean> {
     const apiKey = await this.getApiKey();
     if (!apiKey) {
-      this.logger.warn('Kavenegar API Key is not configured. OTP SMS cannot be sent.');
+      this.logger.warn(
+        'Kavenegar API Key is not configured. OTP SMS cannot be sent.',
+      );
       return false;
     }
 
     try {
       const cleanReceptor = receptor.trim();
       const url = `https://api.kavenegar.com/v1/${apiKey}/verify/lookup.json`;
-      
+
       const response = await axios.get(url, {
         params: {
           receptor: cleanReceptor,
@@ -69,11 +75,19 @@ export class KavenegarService {
         timeout: 10000,
       });
 
-      if (response.data && response.data.return && response.data.return.status === 200) {
-        this.logger.log(`OTP SMS sent to ${cleanReceptor} via template ${template}`);
+      if (
+        response.data &&
+        response.data.return &&
+        response.data.return.status === 200
+      ) {
+        this.logger.log(
+          `OTP SMS sent to ${cleanReceptor} via template ${template}`,
+        );
         return true;
       } else {
-        this.logger.error(`Kavenegar API error: ${JSON.stringify(response.data)}`);
+        this.logger.error(
+          `Kavenegar API error: ${JSON.stringify(response.data)}`,
+        );
         return false;
       }
     } catch (err: unknown) {

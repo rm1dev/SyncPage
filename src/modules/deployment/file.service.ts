@@ -135,18 +135,50 @@ export class FileService {
     }
   }
 
-  packageLandingZip(slug: string): string {
+  packageLandingZip(slug: string, fileName = `${slug}.zip`): string {
     const source = join(this.staticRoot, slug);
     if (!existsSync(source)) {
       throw new Error(`Landing directory not found: ${slug}`);
     }
+    if (!/^[a-z0-9][a-z0-9._-]*\.zip$/i.test(fileName)) {
+      throw new Error('Invalid package filename');
+    }
+
     const outDir = join(this.tempRoot, 'packages');
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-    const outPath = join(outDir, `${slug}.zip`);
+    const outPath = join(outDir, fileName);
+
+    if (existsSync(outPath)) {
+      rmSync(outPath, { force: true });
+    }
+
     const zip = new AdmZip();
     zip.addLocalFolder(source);
     zip.writeZip(outPath);
     return outPath;
+  }
+
+  /**
+   * Builds an immutable package for a landing version. A later save must never
+   * replace the bytes that a queued edge sync event refers to.
+   */
+  createImmutableLandingPackage(
+    slug: string,
+    version: number,
+  ): { path: string; checksum: string; fileName: string } {
+    const draftName = `${slug}-v${version}-${Date.now()}.zip`;
+    const draftPath = this.packageLandingZip(slug, draftName);
+    const checksum = this.checksumFile(draftPath);
+    const fileName = `${slug}-v${version}-${checksum}.zip`;
+    const finalPath = join(this.tempRoot, 'packages', fileName);
+
+    if (existsSync(finalPath)) {
+      rmSync(draftPath, { force: true });
+    } else {
+      renameSync(draftPath, finalPath);
+    }
+
+    return { path: finalPath, checksum, fileName };
   }
 
   cleanPreview(previewId: string) {
@@ -232,6 +264,12 @@ export class FileService {
     if (!existsSync(absPath)) throw new Error('File not found');
     if (statSync(absPath).isDirectory()) throw new Error('Path is a directory');
     writeFileSync(absPath, content, 'utf8');
+
+    // فایل ZIP پکیج رو هم آپدیت/پاک می‌کنیم تا دفعه بعد که دانلود میشه فایل‌های جدید توش باشه
+    const packageZip = join(this.tempRoot, 'packages', `${slug}.zip`);
+    if (existsSync(packageZip)) {
+      rmSync(packageZip, { force: true });
+    }
   }
 
   /** مسیر فیزیکی فایل برای دانلود */

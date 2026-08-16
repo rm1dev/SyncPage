@@ -19,41 +19,42 @@ import { FormEngineService } from './form-engine.service';
 export class FormEngineController {
   constructor(private readonly forms: FormEngineService) {}
 
-  // عمومی: سابمیشن از لندینگ
   @Post(':key/submit')
   submit(
     @Param('key') key: string,
     @Body() body: Record<string, unknown>,
     @Query() query: Record<string, string>,
   ) {
-    const otpCode = body.__otpCode ? String(body.__otpCode) : undefined;
-    const payload = { ...body };
-    delete payload.__otpCode;
-    
-    // 1. استخراج UTM ها از کوئری استرینگ (POST URL params)
-    for (const [qKey, qValue] of Object.entries(query)) {
-      if (qKey.startsWith('utm_') && qValue) {
-        payload[qKey] = qValue;
-      }
-    }
-
-    // 2. استخراج UTM ها از بدنه درخواست (Body/FormData) در صورت وجود
-    for (const [bKey, bValue] of Object.entries(body)) {
-      if (bKey.startsWith('utm_') && bValue) {
-        payload[bKey] = bValue;
-      }
-    }
-
-    return this.forms.submit(key, payload, otpCode);
+    return this.forms.submit(key, this.withUtms(body, query));
   }
 
   @Post(':key/otp')
   requestOtp(
     @Param('key') key: string,
-    @Body('mobile') mobile: string,
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, string>,
   ) {
-    if (!mobile) throw new BadRequestException('Mobile is required');
-    return this.forms.requestOtp(key, mobile);
+    return this.forms.requestOtp(key, this.withUtms(body, query));
+  }
+
+  @Post(':key/otp/verify')
+  verifyOtp(
+    @Param('key') key: string,
+    @Body('submissionId') submissionId: string,
+    @Body('code') code: string,
+  ) {
+    return this.forms.verifyOtp(key, submissionId, code);
+  }
+
+  private withUtms(
+    body: Record<string, unknown>,
+    query: Record<string, string>,
+  ) {
+    const payload = { ...body };
+    for (const [qKey, qValue] of Object.entries(query)) {
+      if (qKey.startsWith('utm_') && qValue) payload[qKey] = qValue;
+    }
+    return payload;
   }
 
   @Get()

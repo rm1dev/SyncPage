@@ -16,31 +16,41 @@ export class HealthController {
     const role = process.env.NODE_ROLE || 'MASTER';
     const nodeId = process.env.EDGE_NODE_ID || undefined;
     const rabbitmq = await this.outbox.getRabbitStatus();
-    const pendingSubmissions = role === 'EDGE' ? await this.outbox.getPendingSubmissionsCount() : 0;
-    const syncPullEnabled =
-      isEdge() && process.env.SYNC_PULL_ENABLED !== '0';
-      
-    const activeDownload = role === 'EDGE' && this.landingApply ? this.landingApply.getActiveDownload() : null;
-    const downloadHistory = role === 'EDGE' && this.landingApply ? this.landingApply.getDownloadHistory() : [];
-    
+    const pendingSubmissions =
+      role === 'EDGE' ? await this.outbox.getPendingSubmissionsCount() : 0;
+    const syncPullEnabled = isEdge() && process.env.SYNC_PULL_ENABLED !== '0';
+
+    const activeDownload =
+      role === 'EDGE' && this.landingApply
+        ? this.landingApply.getActiveDownload()
+        : null;
+    const downloadHistory =
+      role === 'EDGE' && this.landingApply
+        ? this.landingApply.getDownloadHistory()
+        : [];
+
     // واکشی لیست لندینگ‌ها و نسخه آن‌ها از پوشه روی دیسک
-    let edgeLandings: any[] = [];
-    if (role === 'EDGE' && this.landingApply) {
+    const edgeLandings: any[] = [];
+    if (role === 'EDGE') {
       try {
         const { readdirSync, existsSync, readFileSync } = await import('fs');
         const { join } = await import('path');
-        const staticPagesPath = join(process.cwd(), 'static_pages');
-        
+        const staticPagesPath = process.env.STATIC_PAGES_PATH || join(process.cwd(), 'static_pages');
+
         if (existsSync(staticPagesPath)) {
           const dirs = readdirSync(staticPagesPath, { withFileTypes: true })
-            .filter(d => d.isDirectory())
-            .map(d => d.name);
-            
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name);
+
           for (const dir of dirs) {
-            const markerPath = join(staticPagesPath, dir, '.sp-meta.json');
+            const markerPath = join(
+              staticPagesPath,
+              dir,
+              '.syncpage-meta.json',
+            );
             let version = 1;
             let checksum = '';
-            
+
             if (existsSync(markerPath)) {
               try {
                 const meta = JSON.parse(readFileSync(markerPath, 'utf-8'));
@@ -48,17 +58,17 @@ export class HealthController {
                 checksum = meta.checksum || '';
               } catch (e) {}
             }
-            
+
             edgeLandings.push({
               slug: dir,
               version,
-              checksum
+              checksum,
             });
           }
         }
       } catch (err) {}
     }
-      
+
     return {
       ok: true,
       role,
@@ -73,7 +83,9 @@ export class HealthController {
           ? parseInt(process.env.SYNC_PULL_MS || '20000', 10)
           : null,
       },
-      ...(role === 'EDGE' ? { activeDownload, downloadHistory, edgeLandings } : {}),
+      ...(role === 'EDGE'
+        ? { activeDownload, downloadHistory, edgeLandings }
+        : {}),
       ts: new Date().toISOString(),
     };
   }

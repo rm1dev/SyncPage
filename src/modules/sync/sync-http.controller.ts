@@ -39,7 +39,11 @@ export class SyncHttpController {
       !payload?.idempotencyKey ||
       !payload.submissionId ||
       !payload.formKey ||
-      !payload.createdAt
+      !payload.createdAt ||
+      !Number.isInteger(payload.syncVersion) ||
+      payload.syncVersion! < 1 ||
+      !payload.otpStatus ||
+      !['NOT_REQUIRED', 'UNVERIFIED', 'VERIFIED'].includes(payload.otpStatus)
     ) {
       throw new BadRequestException(
         'idempotencyKey, submissionId, formKey and createdAt are required',
@@ -61,36 +65,46 @@ export class SyncHttpController {
     }
 
     const payloadData = { ...(payload.payload || {}) };
-    const otpStatus = payloadData.__otpStatus ? String(payloadData.__otpStatus) : null;
-    delete payloadData.__otpStatus;
-
-    await this.prisma.formSubmission.upsert({
+    const existing = await this.prisma.formSubmission.findUnique({
       where: { id: payload.submissionId },
-      create: {
-        id: payload.submissionId,
-        formId: form.id,
-        edgeNodeId: payload.edgeNodeId || null,
-        payload: payloadData as Prisma.InputJsonValue,
-        otpStatus,
-        createdAt: new Date(payload.createdAt),
-      },
-      update: {
-        edgeNodeId: payload.edgeNodeId || null,
-        otpStatus,
-      },
     });
+    const isNewer = !existing || payload.syncVersion! > existing.syncVersion;
+
+    if (isNewer) {
+      await this.prisma.formSubmission.upsert({
+        where: { id: payload.submissionId },
+        create: {
+          id: payload.submissionId,
+          formId: form.id,
+          edgeNodeId: payload.edgeNodeId || null,
+          payload: payloadData as Prisma.InputJsonValue,
+          otpStatus: payload.otpStatus,
+          syncVersion: payload.syncVersion,
+          createdAt: new Date(payload.createdAt),
+          verifiedAt: payload.verifiedAt ? new Date(payload.verifiedAt) : null,
+        },
+        update: {
+          edgeNodeId: payload.edgeNodeId || null,
+          otpStatus: payload.otpStatus,
+          syncVersion: payload.syncVersion,
+          verifiedAt: payload.verifiedAt ? new Date(payload.verifiedAt) : null,
+        },
+      });
+    }
 
     await this.landingApply.markProcessed(payload.idempotencyKey);
     this.logger.log(
       `Form submission received via HTTP push: ${payload.submissionId}`,
     );
 
-    // اجرای وب‌هوک و اتصال گوگل‌شیت
-    await this.webhook.dispatch(form, {
-      id: payload.submissionId,
-      payload: payload.payload as Record<string, unknown>,
-      createdAt: new Date(payload.createdAt),
-    });
+    // به‌روزرسانی تایید OTP نباید لید را دوباره به وب‌هوک/شیت ارسال کند.
+    if (!existing && isNewer) {
+      await this.webhook.dispatch(form, {
+        id: payload.submissionId,
+        payload: payloadData,
+        createdAt: new Date(payload.createdAt),
+      });
+    }
 
     return { ok: true };
   }

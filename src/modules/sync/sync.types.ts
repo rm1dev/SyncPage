@@ -6,6 +6,8 @@ export interface LandingSyncPayload {
   downloadUrl: string;
   /** اگه downloadUrl از IP داخلی Master نرسید */
   downloadUrlFallback?: string;
+  /** شناسه عملیات برای نمایش روند استقرار در پنل Master */
+  operationId?: string;
   formSnapshot?: unknown;
   /** فقط روی همون نود پوش بشه (اختیاری) */
   targetQueue?: string;
@@ -41,5 +43,8 @@ export interface FormSubmissionSyncPayload {
   formKey: string;
   edgeNodeId?: string;
   payload: Record<string, unknown>;
+  otpStatus: 'NOT_REQUIRED' | 'UNVERIFIED' | 'VERIFIED';
+  syncVersion: number;
   createdAt: string;
+  verifiedAt?: string | null;
 }

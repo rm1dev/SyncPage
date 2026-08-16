@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
@@ -8,56 +9,64 @@ export class WebhookService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async dispatch(form: {
-    title: string;
-    key: string;
-    webhookUrl?: string | null;
-    googleSheetUrl?: string | null;
-    googleSheetMeta?: unknown;
-    sendUtmToWebhook?: boolean;
-    sendUtmToSheet?: boolean;
-  }, submission: {
-    id: string;
-    payload: Record<string, unknown>;
-    createdAt: Date;
-  }) {
+  async dispatch(
+    form: {
+      title: string;
+      key: string;
+      webhookUrl?: string | null;
+      googleSheetUrl?: string | null;
+      googleSheetMeta?: unknown;
+      sendUtmToWebhook?: boolean;
+      sendUtmToSheet?: boolean;
+    },
+    submission: {
+      id: string;
+      payload: Record<string, unknown>;
+      createdAt: Date;
+    },
+  ) {
     let webhookFailed = false;
-    let lastError = null;
+    let lastError: string | null = null;
     let attempts = 0;
 
-    // 1. ارسال Webhook سفارشی در صورت تنظیم بودن
     if (form.webhookUrl) {
-      const MAX_RETRIES = 3;
+      const maxRetries = 3;
       let success = false;
-      
-      let webhookPayload = { ...submission.payload };
-      if (form.sendUtmToWebhook === false) {
-        Object.keys(webhookPayload).forEach(key => {
-          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete webhookPayload[key];
-        });
-      }
-      
-      while (attempts < MAX_RETRIES && !success) {
+      const webhookPayload = this.withoutUtmWhenDisabled(
+        submission.payload,
+        form.sendUtmToWebhook,
+      );
+      const data = {
+        formKey: form.key,
+        formTitle: form.title,
+        submissionId: submission.id,
+        payload: webhookPayload,
+        createdAt: submission.createdAt.toISOString(),
+      };
+
+      while (attempts < maxRetries && !success) {
         attempts++;
         try {
-          await this.sendWebhook(form.webhookUrl, {
-            formKey: form.key,
-            formTitle: form.title,
-            submissionId: submission.id,
-            payload: webhookPayload,
-            createdAt: submission.createdAt.toISOString(),
-          });
+          const result = await this.sendWebhook(form.webhookUrl, data);
+          await this.recordInvocation(submission.id, attempts, result);
           success = true;
-          this.logger.log(`Webhook sent successfully for submission ${submission.id} on attempt ${attempts}`);
+          this.logger.log(
+            `Webhook sent successfully for submission ${submission.id} on attempt ${attempts}`,
+          );
         } catch (err: unknown) {
-          lastError = err instanceof Error ? err.message : String(err);
-          this.logger.error(`Webhook error for form ${form.key}, attempt ${attempts}: ${lastError}`);
-          
-          if (attempts < MAX_RETRIES) {
-            // تاخیر افزایشی بین ریتراها: 1 دقیقه، 3 دقیقه
+          const result = this.failedWebhookResult(form.webhookUrl, data, err);
+          await this.recordInvocation(submission.id, attempts, result);
+          lastError = result.error;
+          this.logger.error(
+            `Webhook error for form ${form.key}, attempt ${attempts}: ${lastError}`,
+          );
+
+          if (attempts < maxRetries) {
             const delayMs = attempts * 60 * 1000;
-            this.logger.log(`Waiting ${delayMs}ms before next webhook retry...`);
-            await new Promise(res => setTimeout(res, delayMs));
+            this.logger.log(
+              `Waiting ${delayMs}ms before next webhook retry...`,
+            );
+            await new Promise((res) => setTimeout(res, delayMs));
           } else {
             webhookFailed = true;
           }
@@ -65,33 +74,39 @@ export class WebhookService {
       }
     }
 
-    // آپدیت وضعیت فرم در دیتابیس برای لیست خطادارها
     if (form.webhookUrl) {
-      await this.prisma.formSubmission.update({
-        where: { id: submission.id },
-        data: {
-          webhookStatus: webhookFailed ? 'FAILED' : 'SENT',
-          webhookAttempts: attempts,
-          webhookLastError: lastError,
-        },
-      }).catch(e => this.logger.error(`Failed to update submission webhook status: ${e.message}`));
+      await this.prisma.formSubmission
+        .update({
+          where: { id: submission.id },
+          data: {
+            webhookStatus: webhookFailed ? 'FAILED' : 'SENT',
+            webhookAttempts: attempts,
+            webhookLastError: lastError,
+          },
+        })
+        .catch((e) =>
+          this.logger.error(
+            `Failed to update submission webhook status: ${e.message}`,
+          ),
+        );
     }
 
-    // 2. ارسال به گوگل شیت در صورت تنظیم بودن (بدون تغییر)
     if (form.googleSheetUrl) {
-      let sheetPayload = { ...submission.payload };
-      if (form.sendUtmToSheet === false) {
-        Object.keys(sheetPayload).forEach(key => {
-          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete sheetPayload[key];
-        });
-      }
-
+      const sheetPayload = this.withoutUtmWhenDisabled(
+        submission.payload,
+        form.sendUtmToSheet,
+      );
       this.sendToGoogleSheet(
         form.googleSheetUrl,
-        form.googleSheetMeta as { startRow?: number; columns?: Record<string, string> } | null,
+        form.googleSheetMeta as {
+          startRow?: number;
+          columns?: Record<string, string>;
+        } | null,
         sheetPayload,
       ).catch((err) => {
-        this.logger.error(`Google Sheet sync error for form ${form.key}: ${err.message}`);
+        this.logger.error(
+          `Google Sheet sync error for form ${form.key}: ${err.message}`,
+        );
       });
     }
   }
@@ -101,89 +116,73 @@ export class WebhookService {
       where: { id: submissionId },
       include: { form: true },
     });
-    
+
     if (!submission || !submission.form.webhookUrl) {
       throw new Error('Submission or webhook config not found');
     }
 
-    // آپدیت وضعیت به حالت PENDING تا مشخص شود در حال تلاش است
     await this.prisma.formSubmission.update({
       where: { id: submissionId },
       data: { webhookStatus: 'PENDING', webhookAttempts: { increment: 1 } },
     });
 
+    const data = {
+      formKey: submission.form.key,
+      formTitle: submission.form.title,
+      submissionId: submission.id,
+      payload: this.withoutUtmWhenDisabled(
+        submission.payload as Record<string, unknown>,
+        submission.form.sendUtmToWebhook,
+      ),
+      createdAt: submission.createdAt.toISOString(),
+    };
+    const attempt = submission.webhookAttempts + 1;
+
     try {
-      let webhookPayload = { ...(submission.payload as Record<string, unknown>) };
-      if (submission.form.sendUtmToWebhook === false) {
-        Object.keys(webhookPayload).forEach(key => {
-          if (key.startsWith('sp_utm_') || key.startsWith('utm_')) delete webhookPayload[key];
-        });
-      }
-
-      await this.sendWebhook(submission.form.webhookUrl, {
-        formKey: submission.form.key,
-        formTitle: submission.form.title,
-        submissionId: submission.id,
-        payload: webhookPayload,
-        createdAt: submission.createdAt.toISOString(),
-      });
-
+      const result = await this.sendWebhook(submission.form.webhookUrl, data);
+      await this.recordInvocation(submissionId, attempt, result);
       await this.prisma.formSubmission.update({
         where: { id: submissionId },
         data: { webhookStatus: 'SENT', webhookLastError: null },
       });
       return { success: true };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const result = this.failedWebhookResult(
+        submission.form.webhookUrl,
+        data,
+        err,
+      );
+      await this.recordInvocation(submissionId, attempt, result);
       await this.prisma.formSubmission.update({
         where: { id: submissionId },
-        data: { webhookStatus: 'FAILED', webhookLastError: message },
+        data: { webhookStatus: 'FAILED', webhookLastError: result.error },
       });
-      throw new Error(message);
+      throw new Error(result.error || 'Webhook request failed');
     }
   }
 
-  private async sendWebhook(templateUrl: string, data: Record<string, unknown>) {
-    let resolvedUrl = templateUrl;
-    const payload = (data.payload || {}) as Record<string, unknown>;
-
-    // 1. جایگزینی متغیرهای داخل آدرس URL مانند $EMAIL$, $MOBILE$, {email}, $name$
-    for (const [key, val] of Object.entries(payload)) {
-      const encodedVal = encodeURIComponent(String(val ?? ''));
-      // پشتیبانی از فرمت‌های مختلف مانند $FIELD$, $field$, {FIELD}, {field}
-      const patterns = [
-        new RegExp(`\\$${key}\\$`, 'gi'),
-        new RegExp(`\\{${key}\\}`, 'gi'),
-      ];
-      for (const pattern of patterns) {
-        resolvedUrl = resolvedUrl.replace(pattern, encodedVal);
-      }
-    }
-
-    // پاک‌سازی placeholderهای باقی‌مانده که مقداری نداشتند (مثلا $SOMETHING$)
-    resolvedUrl = resolvedUrl.replace(/\$[A-Za-z0-9_]+\$/g, '');
-    resolvedUrl = resolvedUrl.replace(/\{[A-Za-z0-9_]+\}/g, '');
-
-    // اضافه کردن خودکار پارامترهای UTM به Query String آدرس
-    try {
-      const urlObj = new URL(resolvedUrl);
-      for (const [key, val] of Object.entries(payload)) {
-        if (key.startsWith('utm_') || key.startsWith('sp_utm_')) {
-          // برای جلوگیری از تکرار، فقط اگر از قبل تنظیم نشده بود اضافه می‌کنیم
-          if (!urlObj.searchParams.has(key) && val !== undefined && val !== null && val !== '') {
-            urlObj.searchParams.append(key, String(val));
-          }
+  private withoutUtmWhenDisabled(
+    payload: Record<string, unknown>,
+    sendUtm: boolean | undefined,
+  ) {
+    const result = { ...payload };
+    if (sendUtm === false) {
+      Object.keys(result).forEach((key) => {
+        if (key.startsWith('sp_utm_') || key.startsWith('utm_')) {
+          delete result[key];
         }
-      }
-      resolvedUrl = urlObj.toString();
-    } catch (e) {
-      this.logger.warn(`Could not parse webhook URL to append UTMs: ${resolvedUrl}`);
+      });
     }
+    return result;
+  }
 
-    this.logger.log(`Dispatching webhook to ${resolvedUrl}`);
-
-    // اگر متغیر در Query String باشد می‌توان درخواست را با POST یا GET متناسب با نیاز ارسال کرد (اینجا POST با Payload کامل)
-    await axios({
+  private async sendWebhook(
+    templateUrl: string,
+    data: Record<string, unknown>,
+  ) {
+    const resolvedUrl = this.resolveWebhookUrl(templateUrl, data);
+    const startedAt = Date.now();
+    const response = await axios({
       method: 'POST',
       url: resolvedUrl,
       data,
@@ -193,6 +192,140 @@ export class WebhookService {
         'User-Agent': 'SyncPage-Webhook/1.0',
       },
     });
+
+    return {
+      requestUrl: resolvedUrl,
+      success: true,
+      responseStatus: response.status,
+      responseBody: this.serializeBody(response.data),
+      responseHeaders: this.safeHeaders(response.headers),
+      error: null,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  private failedWebhookResult(
+    templateUrl: string,
+    data: Record<string, unknown>,
+    err: unknown,
+  ) {
+    const axiosError = axios.isAxiosError(err) ? (err as AxiosError) : null;
+    const response = axiosError?.response;
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      requestUrl: this.resolveWebhookUrl(templateUrl, data),
+      success: false,
+      responseStatus: response?.status || null,
+      responseBody: response ? this.serializeBody(response.data) : null,
+      responseHeaders: response ? this.safeHeaders(response.headers) : null,
+      error: message,
+      durationMs: null,
+    };
+  }
+
+  private async recordInvocation(
+    submissionId: string,
+    attempt: number,
+    result: {
+      requestUrl: string;
+      success: boolean;
+      responseStatus: number | null;
+      responseBody: string | null;
+      responseHeaders: Record<string, string> | null;
+      error: string | null;
+      durationMs: number | null;
+    },
+  ) {
+    await this.prisma.webhookInvocation
+      .create({
+        data: {
+          submissionId,
+          attempt,
+          requestUrl: result.requestUrl,
+          success: result.success,
+          responseStatus: result.responseStatus,
+          responseBody: result.responseBody,
+          responseHeaders: result.responseHeaders
+            ? (result.responseHeaders as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          error: result.error,
+          durationMs: result.durationMs,
+        },
+      })
+      .catch((error) =>
+        this.logger.error(
+          `Failed to record webhook invocation: ${error.message}`,
+        ),
+      );
+  }
+
+  private resolveWebhookUrl(
+    templateUrl: string,
+    data: Record<string, unknown>,
+  ) {
+    let resolvedUrl = templateUrl;
+    const payload = (data.payload || {}) as Record<string, unknown>;
+
+    for (const [key, val] of Object.entries(payload)) {
+      const encodedVal = encodeURIComponent(String(val ?? ''));
+      for (const pattern of [
+        new RegExp(`\\$${key}\\$`, 'gi'),
+        new RegExp(`\\{${key}\\}`, 'gi'),
+      ]) {
+        resolvedUrl = resolvedUrl.replace(pattern, encodedVal);
+      }
+    }
+
+    resolvedUrl = resolvedUrl.replace(/\$[A-Za-z0-9_]+\$/g, '');
+    resolvedUrl = resolvedUrl.replace(/\{[A-Za-z0-9_]+\}/g, '');
+
+    try {
+      const urlObj = new URL(resolvedUrl);
+      for (const [key, val] of Object.entries(payload)) {
+        if (
+          (key.startsWith('utm_') || key.startsWith('sp_utm_')) &&
+          !urlObj.searchParams.has(key) &&
+          val !== undefined &&
+          val !== null &&
+          val !== ''
+        ) {
+          urlObj.searchParams.append(key, String(val));
+        }
+      }
+      resolvedUrl = urlObj.toString();
+    } catch {
+      this.logger.warn(
+        `Could not parse webhook URL to append UTMs: ${resolvedUrl}`,
+      );
+    }
+
+    this.logger.log(`Dispatching webhook to ${resolvedUrl}`);
+    return resolvedUrl;
+  }
+
+  private serializeBody(value: unknown) {
+    if (value === undefined || value === null) return null;
+    const body = typeof value === 'string' ? value : JSON.stringify(value);
+    return body.length > 10_000
+      ? `${body.slice(0, 10_000)}\n[truncated]`
+      : body;
+  }
+
+  private safeHeaders(headers: unknown): Record<string, string> {
+    const hidden = new Set([
+      'authorization',
+      'cookie',
+      'set-cookie',
+      'proxy-authorization',
+    ]);
+    return Object.fromEntries(
+      Object.entries((headers || {}) as Record<string, unknown>)
+        .filter(([key]) => !hidden.has(key.toLowerCase()))
+        .map(([key, value]) => [
+          key,
+          Array.isArray(value) ? value.join(', ') : String(value),
+        ]),
+    );
   }
 
   private async sendToGoogleSheet(
@@ -200,21 +333,17 @@ export class WebhookService {
     meta: { startRow?: number; columns?: Record<string, string> } | null,
     payload: Record<string, unknown>,
   ) {
-    this.logger.log(`Forwarding submission to Google Sheet endpoint: ${sheetUrl}`);
-    
-    // ارسال مستقیم دیتا همراه با متادیتا به وب‌هوک / Apps Script مربوط به شیت
-    await axios.post(sheetUrl, {
-      payload,
-      meta: {
-        startRow: meta?.startRow || 2,
-        columns: meta?.columns || {},
+    this.logger.log(
+      `Forwarding submission to Google Sheet endpoint: ${sheetUrl}`,
+    );
+    await axios.post(
+      sheetUrl,
+      {
+        payload,
+        meta: { startRow: meta?.startRow || 2, columns: meta?.columns || {} },
+        submittedAt: new Date().toISOString(),
       },
-      submittedAt: new Date().toISOString(),
-    }, {
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+      { timeout: 15000, headers: { 'Content-Type': 'application/json' } },
+    );
   }
 }
