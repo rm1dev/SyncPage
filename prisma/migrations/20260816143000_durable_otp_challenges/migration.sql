@@ -1,5 +1,4 @@
 ALTER TABLE "FormSubmission"
-ALTER TABLE "FormSubmission"
   ADD COLUMN "syncVersion" INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN "verifiedAt" TIMESTAMP(3);
 
