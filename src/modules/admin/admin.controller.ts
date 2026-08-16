@@ -25,6 +25,7 @@ import { DeploymentService } from '../deployment/deployment.service';
 import { NodesService } from '../nodes/nodes.service';
 import { VersionService } from '../updates/version.service';
 import { isOutdated } from '../../common/app-version';
+import { createExcelWorkbook, formatJalaliDateTime } from '../../common/excel.util';
 // jdate.js extends standard classes
 import 'jdate.js';
 
@@ -82,12 +83,14 @@ export class AdminController {
   @UseGuards(AdminTokenGuard)
   @Render('admin/dashboard')
   async dashboard(@Query('flash') flash?: string) {
-    const forms = await this.forms.list();
-    const nodes = await this.nodes.list();
-    const [masterUpdate, nodesVersion] = await Promise.all([
-      this.versions.getMasterStatus(),
-      this.versions.getNodesVersionStatus(),
-    ]);
+    const [forms, nodes, formMetrics, masterUpdate, nodesVersion] =
+      await Promise.all([
+        this.forms.list(),
+        this.nodes.list(),
+        this.forms.getDashboardMetrics(),
+        this.versions.getMasterStatus(),
+        this.versions.getNodesVersionStatus(),
+      ]);
     const outdatedNodes = nodesVersion.nodes.filter((n) => n.outdated);
     return {
       layout: 'main',
@@ -102,6 +105,7 @@ export class AdminController {
         ...f,
         fieldCount: Array.isArray(f.body) ? f.body.length : 0,
       })),
+      formMetrics,
       nodeCount: nodes.length,
       onlineCount: nodes.filter((n) => n.status === 'ONLINE').length,
     };
@@ -118,7 +122,7 @@ export class AdminController {
     return {
       layout: 'main',
       title: 'مدیریت پروفایل‌ها',
-      active: 'profiles',
+      active: 'forms',
       flash,
       error,
       profiles,
@@ -132,7 +136,7 @@ export class AdminController {
     return {
       layout: 'main',
       title: 'افزودن پروفایل',
-      active: 'profiles',
+      active: 'forms',
       profile: {},
       startRow: 2,
     };
@@ -181,7 +185,7 @@ export class AdminController {
     return {
       layout: 'main',
       title: 'ویرایش پروفایل',
-      active: 'profiles',
+      active: 'forms',
       profile,
       columnMappingJson: meta.columns
         ? JSON.stringify(meta.columns, null, 2)
@@ -219,7 +223,7 @@ export class AdminController {
       return res.status(400).render('admin/profile-edit', {
         layout: 'main',
         title: 'ویرایش پروفایل',
-        active: 'profiles',
+        active: 'forms',
         error: err instanceof Error ? err.message : 'Update failed',
         profile: body,
         columnMappingJson: body.columnMapping,
@@ -246,67 +250,108 @@ export class AdminController {
     }
   }
 
-  @Get('forms/new')
+  @Get('forms')
   @UseGuards(AdminTokenGuard)
-  @Render('admin/form-edit')
-  async newForm() {
-    const profiles = await this.profiles.list();
+  @Render('admin/forms')
+  async formsPage(
+    @Query('edit') editId?: string,
+    @Query('new') newForm?: string,
+    @Query('flash') flash?: string,
+    @Query('error') error?: string,
+  ) {
+    const [rawForms, profiles] = await Promise.all([
+      this.forms.listWithSubmissionCounts(),
+      this.profiles.list(),
+    ]);
+
+    let form: any = {
+      otpEnabled: false,
+      otpField: 'mobile',
+      otpTemplate: 'verify',
+      sendUtmToWebhook: true,
+      sendUtmToSheet: true,
+    };
+    let bodyJson = JSON.stringify(
+      [
+        { type: 'text', name: 'fullName', label: 'نام کامل', required: true },
+        { type: 'text', name: 'mobile', label: 'شماره موبایل', required: true },
+      ],
+      null,
+      2,
+    );
+    let columnMappingJson = JSON.stringify(
+      { fullName: 'A', mobile: 'B' },
+      null,
+      2,
+    );
+    let startRow = 2;
+
+    if (editId) {
+      try {
+        form = await this.forms.getById(editId);
+        const meta: any = form.googleSheetMeta || {};
+        bodyJson = JSON.stringify(form.body, null, 2);
+        columnMappingJson = meta.columns
+          ? JSON.stringify(meta.columns, null, 2)
+          : '';
+        startRow = meta.startRow || 2;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'فرم پیدا نشد';
+        return {
+          layout: 'main',
+          title: 'مدیریت فرم‌ها',
+          active: 'forms',
+          forms: rawForms.map((item) => ({
+            ...item,
+            fieldCount: Array.isArray(item.body) ? item.body.length : 0,
+            submissionCount: item._count.submissions,
+            hasSubmissions: item._count.submissions > 0,
+          })),
+          profiles,
+          form,
+          bodyJson,
+          columnMappingJson,
+          startRow,
+          error: message,
+          editing: false,
+          showEditor: false,
+          flash,
+        };
+      }
+    }
+
     return {
       layout: 'main',
-      title: 'فرم جدید',
+      title: 'مدیریت فرم‌ها',
       active: 'forms',
+      forms: rawForms.map((item) => ({
+        ...item,
+        fieldCount: Array.isArray(item.body) ? item.body.length : 0,
+        submissionCount: item._count.submissions,
+        hasSubmissions: item._count.submissions > 0,
+      })),
       profiles,
-      bodyJson: JSON.stringify(
-        [
-          {
-            type: 'text',
-            name: 'fullName',
-            label: 'نام کامل',
-            required: true,
-          },
-          {
-            type: 'text',
-            name: 'mobile',
-            label: 'شماره موبایل',
-            required: true,
-          },
-        ],
-        null,
-        2,
-      ),
-      columnMappingJson: JSON.stringify(
-        { fullName: 'A', mobile: 'B' },
-        null,
-        2,
-      ),
-      startRow: 2,
-      form: {
-        otpEnabled: false,
-        otpField: 'mobile',
-        otpTemplate: 'verify',
-      },
+      form,
+      bodyJson,
+      columnMappingJson,
+      startRow,
+      flash,
+      error,
+      editing: Boolean(editId),
+      showEditor: Boolean(editId || newForm),
     };
+  }
+
+  @Get('forms/new')
+  @UseGuards(AdminTokenGuard)
+  newFormRedirect(@Res() res: Response) {
+    return res.redirect('/spadmin/forms?new=1');
   }
 
   @Get('forms/:id')
   @UseGuards(AdminTokenGuard)
-  @Render('admin/form-edit')
-  async editForm(@Param('id') id: string) {
-    const form = await this.forms.getById(id);
-    const profiles = await this.profiles.list();
-    const meta: any = form.googleSheetMeta || {};
-    return {
-      layout: 'main',
-      title: 'ویرایش فرم',
-      active: 'forms',
-      form,
-      profiles,
-      bodyJson: JSON.stringify(form.body, null, 2),
-      columnMappingJson: meta.columns
-        ? JSON.stringify(meta.columns, null, 2)
-        : '',
-      startRow: meta.startRow || 2,
-    };
+  editFormRedirect(@Param('id') id: string, @Res() res: Response) {
+    return res.redirect(`/spadmin/forms?edit=${encodeURIComponent(id)}`);
   }
 
   @Post('forms')
@@ -338,34 +383,13 @@ export class AdminController {
         profileId: body.profileId || null,
       });
       return res.redirect(
-        '/spadmin?flash=' + encodeURIComponent('فرم ذخیره شد'),
+        '/spadmin/forms?flash=' + encodeURIComponent('فرم ذخیره شد'),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Save failed';
-      return res.status(400).render('admin/form-edit', {
-        layout: 'main',
-        title: 'فرم جدید',
-        active: 'forms',
-        error: message,
-        bodyJson: body.body,
-        columnMappingJson: body.columnMapping,
-        startRow: body.startRow,
-        form: {
-          title: body.title,
-          key: body.key,
-          slug: body.slug,
-          webhookUrl: body.webhookUrl,
-          googleSheetUrl: body.googleSheetUrl,
-          otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
-          otpField: body.otpField,
-          otpTemplate: body.otpTemplate,
-          otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-          sendUtmToWebhook:
-            body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-          sendUtmToSheet:
-            body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
-        },
-      });
+      return res.status(400).redirect(
+        `/spadmin/forms?new=1&error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -401,35 +425,13 @@ export class AdminController {
         profileId: body.profileId || null,
       });
       return res.redirect(
-        '/spadmin?flash=' + encodeURIComponent('فرم به‌روز شد'),
+        '/spadmin/forms?flash=' + encodeURIComponent('فرم به‌روز شد'),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Update failed';
-      const form = await this.forms.getById(id);
-      return res.status(400).render('admin/form-edit', {
-        layout: 'main',
-        title: 'ویرایش فرم',
-        active: 'forms',
-        error: message,
-        form: {
-          ...form,
-          title: body.title || form.title,
-          slug: body.slug || form.slug,
-          webhookUrl: body.webhookUrl,
-          googleSheetUrl: body.googleSheetUrl,
-          otpEnabled: body.otpEnabled === 'true' || body.otpEnabled === 'on',
-          otpField: body.otpField,
-          otpTemplate: body.otpTemplate,
-          otpLength: body.otpLength ? parseInt(body.otpLength, 10) : 5,
-          sendUtmToWebhook:
-            body.sendUtmToWebhook === 'true' || body.sendUtmToWebhook === 'on',
-          sendUtmToSheet:
-            body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
-        },
-        bodyJson: body.body,
-        columnMappingJson: body.columnMapping,
-        startRow: body.startRow,
-      });
+      return res.status(400).redirect(
+        `/spadmin/forms?edit=${encodeURIComponent(id)}&error=${encodeURIComponent(message)}`,
+      );
     }
   }
 
@@ -819,6 +821,118 @@ export class AdminController {
     };
   }
 
+  @Get('submissions/export/excel')
+  @UseGuards(AdminTokenGuard)
+  async exportSubmissionsExcel(
+    @Query('formId') formId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('otpFilter') otpFilter?: string,
+    @Query('utmFilter') utmFilter?: string,
+    @Res() res?: Response,
+  ) {
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (startDate) {
+      const [jy, jm, jd] = startDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        fromDate = new Date(g.year, g.month - 1, g.date, 0, 0, 0, 0);
+      }
+    }
+
+    if (endDate) {
+      const [jy, jm, jd] = endDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        toDate = new Date(g.year, g.month - 1, g.date, 23, 59, 59, 999);
+      }
+    }
+
+    const rawSubmissions = await this.forms.listSubmissions(
+      formId || undefined,
+      fromDate,
+      toDate,
+      otpFilter,
+      utmFilter,
+    );
+
+    // استخراج تمام کلیدهای منحصر به فرد payload برای ستون‌های داینامیک
+    const payloadKeys = new Set<string>();
+    const utmKeys = new Set<string>();
+
+    rawSubmissions.forEach((s) => {
+      const payloadObj = (s.payload || {}) as Record<string, unknown>;
+      Object.keys(payloadObj).forEach((k) => {
+        if (k.startsWith('utm_')) {
+          utmKeys.add(k);
+        } else {
+          payloadKeys.add(k);
+        }
+      });
+    });
+
+    const columns = [
+      { header: 'شناسه لید', key: 'id', width: 36 },
+      { header: 'عنوان فرم', key: 'formTitle', width: 22 },
+      { header: 'کلید فرم', key: 'formKey', width: 18 },
+      { header: 'نود مبدا', key: 'nodeTitle', width: 20 },
+      { header: 'وضعیت OTP', key: 'otpStatus', width: 16 },
+      { header: 'تاریخ ثبت (جلالی)', key: 'jalaliDate', width: 22 },
+      { header: 'تاریخ میلادی', key: 'createdAt', width: 22 },
+      ...Array.from(payloadKeys).map((key) => ({
+        header: key,
+        key: `payload_${key}`,
+        width: 20,
+      })),
+      ...Array.from(utmKeys).map((key) => ({
+        header: `UTM: ${key.replace('utm_', '')}`,
+        key: `utm_${key}`,
+        width: 18,
+      })),
+    ];
+
+    const rows = rawSubmissions.map((s) => {
+      const payloadObj = (s.payload || {}) as Record<string, unknown>;
+      let otpLabel = 'بدون OTP';
+      if (s.otpStatus === 'VERIFIED') otpLabel = 'تایید شده';
+      else if (s.otpStatus === 'UNVERIFIED') otpLabel = 'تایید نشده';
+
+      const rowData: Record<string, any> = {
+        id: s.id,
+        formTitle: s.form?.title || '—',
+        formKey: (s.form as any)?.key || '—',
+        nodeTitle: s.edgeNode ? s.edgeNode.title : 'سرور Master (لوکال)',
+        otpStatus: otpLabel,
+        jalaliDate: formatJalaliDateTime(s.createdAt),
+        createdAt: new Date(s.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+      };
+
+      payloadKeys.forEach((key) => {
+        const val = payloadObj[key];
+        rowData[`payload_${key}`] = val !== undefined && val !== null ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : '';
+      });
+
+      utmKeys.forEach((key) => {
+        const val = payloadObj[key];
+        rowData[`utm_${key}`] = val !== undefined && val !== null ? String(val) : '';
+      });
+
+      return rowData;
+    });
+
+    const buffer = await createExcelWorkbook('Submissions', columns, rows);
+    const fileName = `leads_export_${Date.now()}.xlsx`;
+
+    res?.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res?.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res?.send(buffer);
+  }
+
   @Get('developers/webhook-history')
   @UseGuards(AdminTokenGuard)
   @Render('admin/webhook-history')
@@ -864,6 +978,58 @@ export class AdminController {
     };
   }
 
+  @Get('developers/webhook-history/export/excel')
+  @UseGuards(AdminTokenGuard)
+  async exportWebhookInvocationsExcel(@Res() res: Response) {
+    const result = await this.forms.listWebhookInvocations();
+
+    const columns = [
+      { header: 'شناسه فراخوانی', key: 'id', width: 36 },
+      { header: 'عنوان فرم', key: 'formTitle', width: 22 },
+      { header: 'کلید فرم', key: 'formKey', width: 18 },
+      { header: 'شناسه لید (Submission)', key: 'submissionId', width: 36 },
+      { header: 'نود مبدا', key: 'nodeTitle', width: 20 },
+      { header: 'تلاش', key: 'attempt', width: 10 },
+      { header: 'آدرس وب‌هوک (URL)', key: 'requestUrl', width: 35 },
+      { header: 'نتیجه', key: 'status', width: 12 },
+      { header: 'کد وضعیت HTTP', key: 'responseStatus', width: 16 },
+      { header: 'زمان پاسخ (ms)', key: 'durationMs', width: 16 },
+      { header: 'متن خطا', key: 'error', width: 30 },
+      { header: 'پاسخ سرور (Response Body)', key: 'responseBody', width: 35 },
+      { header: 'هدرهای پاسخ (Headers)', key: 'responseHeaders', width: 25 },
+      { header: 'تاریخ فراخوانی (جلالی)', key: 'jalaliDate', width: 22 },
+      { header: 'تاریخ میلادی', key: 'createdAt', width: 22 },
+    ];
+
+    const rows = result.items.map((item) => ({
+      id: item.id,
+      formTitle: item.submission.form.title,
+      formKey: item.submission.form.key,
+      submissionId: item.submissionId,
+      nodeTitle: item.submission.edgeNode?.title || 'سرور Master (لوکال)',
+      attempt: item.attempt,
+      requestUrl: item.requestUrl,
+      status: item.success ? 'موفق' : 'ناموفق',
+      responseStatus: item.responseStatus ? String(item.responseStatus) : '—',
+      durationMs: item.durationMs !== null && item.durationMs !== undefined ? item.durationMs : '—',
+      error: item.error || '—',
+      responseBody: item.responseBody || '—',
+      responseHeaders: item.responseHeaders ? JSON.stringify(item.responseHeaders) : '—',
+      jalaliDate: formatJalaliDateTime(item.createdAt),
+      createdAt: new Date(item.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+    }));
+
+    const buffer = await createExcelWorkbook('WebhookInvocations', columns, rows);
+    const fileName = `webhook_invocations_${Date.now()}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(buffer);
+  }
+
   @Get('failed-webhooks')
   @UseGuards(AdminTokenGuard)
   @Render('admin/failed-webhooks')
@@ -897,6 +1063,68 @@ export class AdminController {
       error,
       items,
     };
+  }
+
+  @Get('failed-webhooks/export/excel')
+  @UseGuards(AdminTokenGuard)
+  async exportFailedWebhooksExcel(@Res() res: Response) {
+    const raw = await this.forms.listFailedWebhooks();
+
+    // استخراج تمام کلیدهای منحصر به فرد payload برای ستون‌ها
+    const payloadKeys = new Set<string>();
+    raw.forEach((s) => {
+      const payloadObj = (s.payload || {}) as Record<string, unknown>;
+      Object.keys(payloadObj).forEach((k) => payloadKeys.add(k));
+    });
+
+    const columns = [
+      { header: 'شناسه لید', key: 'id', width: 36 },
+      { header: 'عنوان فرم', key: 'formTitle', width: 22 },
+      { header: 'کلید فرم', key: 'formKey', width: 18 },
+      { header: 'نود مبدا', key: 'nodeTitle', width: 20 },
+      { header: 'تعداد تلاش', key: 'attempts', width: 14 },
+      { header: 'آخرین متن خطا', key: 'lastError', width: 35 },
+      { header: 'تاریخ ثبت لید (جلالی)', key: 'jalaliDate', width: 22 },
+      { header: 'آخرین بروزرسانی (جلالی)', key: 'updatedAtFa', width: 22 },
+      { header: 'تاریخ میلادی', key: 'createdAt', width: 22 },
+      ...Array.from(payloadKeys).map((key) => ({
+        header: key,
+        key: `payload_${key}`,
+        width: 20,
+      })),
+    ];
+
+    const rows = raw.map((s) => {
+      const payloadObj = (s.payload || {}) as Record<string, unknown>;
+      const rowData: Record<string, any> = {
+        id: s.id,
+        formTitle: s.form?.title || '—',
+        formKey: s.form?.key || '—',
+        nodeTitle: s.edgeNode ? s.edgeNode.title : 'سرور Master (لوکال)',
+        attempts: s.webhookAttempts,
+        lastError: s.webhookLastError || '—',
+        jalaliDate: formatJalaliDateTime(s.createdAt),
+        updatedAtFa: formatJalaliDateTime(s.updatedAt),
+        createdAt: new Date(s.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+      };
+
+      payloadKeys.forEach((key) => {
+        const val = payloadObj[key];
+        rowData[`payload_${key}`] = val !== undefined && val !== null ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : '';
+      });
+
+      return rowData;
+    });
+
+    const buffer = await createExcelWorkbook('FailedWebhooks', columns, rows);
+    const fileName = `failed_webhooks_${Date.now()}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(buffer);
   }
 
   @Post('failed-webhooks/:id/retry')

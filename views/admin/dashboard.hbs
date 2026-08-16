@@ -1,3 +1,4 @@
+<header class="page-header">
   <div class="page-header-title">
     <div style="display: flex; align-items: center; gap: 0.75rem;">
       <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle Sidebar">
@@ -5,100 +6,59 @@
       </button>
       <h1>داشبورد مدیریت</h1>
     </div>
-    <span class="subtitle">نمای کلی از فرم‌ها و وضعیت نودهای Edge</span>
+    <span class="subtitle">نمای کلی از فرم‌ها، لیدها و وضعیت نودهای Edge</span>
   </div>
-  <a href="/spadmin/forms/new" class="btn btn-primary">
+  <a href="/spadmin/forms?new=1" class="btn btn-primary">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     <span>ساخت فرم جدید</span>
   </a>
 </header>
 
-{{#if flash}}
-  <div class="alert alert-ok">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-    <span>{{flash}}</span>
-  </div>
-{{/if}}
+{{#if flash}}<div class="alert alert-ok"><span>{{flash}}</span></div>{{/if}}
 
 {{#if masterUpdate.outdated}}
   <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
-    <div>
-      <strong>آپدیت Master موجود است</strong>
-      — نسخه فعلی <code>{{masterUpdate.localVersion}}</code>،
-      آخرین نسخه GitHub <code>{{masterUpdate.latestVersion}}</code>
-    </div>
-    <div class="install-cmd-box">
-      <code id="master-update-cmd">{{masterUpdate.updateCommand}}</code>
-      <button type="button" class="btn btn-secondary btn-copy" data-copy="#master-update-cmd">کپی</button>
-    </div>
-    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">این کامند را با root روی سرور Master اجرا کنید. فایل <code>.env</code> حفظ می‌شود.</p>
+    <div><strong>آپدیت Master موجود است</strong> — نسخه فعلی <code>{{masterUpdate.localVersion}}</code>، آخرین نسخه GitHub <code>{{masterUpdate.latestVersion}}</code></div>
+    <div class="install-cmd-box"><code id="master-update-cmd">{{masterUpdate.updateCommand}}</code><button type="button" class="btn btn-secondary btn-copy" data-copy="#master-update-cmd">کپی</button></div>
   </div>
 {{/if}}
 
 {{#if outdatedNodes.length}}
   <div class="alert alert-error" style="flex-direction:column; align-items:stretch; gap:0.75rem;">
-    <div>
-      <strong>{{outdatedNodes.length}} نود Edge نسخه قدیمی دارند</strong>
-      {{#if outdatedNodes.[0]}}
-        (مثلاً «{{outdatedNodes.[0].title}}»)
-      {{/if}}
-    </div>
-    <div class="install-cmd-box">
-      <code id="node-update-cmd-dash">{{nodeUpdateCommand}}</code>
-      <button type="button" class="btn btn-secondary btn-copy" data-copy="#node-update-cmd-dash">کپی</button>
-    </div>
-    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">این کامند را روی هر سرور Edge قدیمی اجرا کنید.</p>
+    <div><strong>{{outdatedNodes.length}} نود Edge نسخه قدیمی دارند</strong></div>
+    <div class="install-cmd-box"><code id="node-update-cmd-dash">{{nodeUpdateCommand}}</code><button type="button" class="btn btn-secondary btn-copy" data-copy="#node-update-cmd-dash">کپی</button></div>
   </div>
 {{/if}}
 
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-info">
-      <span class="stat-label">تعداد فرم‌ها</span>
-      <span class="stat-value">{{forms.length}}</span>
-    </div>
-    <div class="stat-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-    </div>
+    <div class="stat-info"><span class="stat-label">وضعیت فرم‌ها</span><span class="stat-value">{{formMetrics.formsWithLeads}} / {{forms.length}}</span><small style="color: var(--text-muted);">فرم دارای لید / کل فرم‌ها</small></div>
+    <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
   </div>
   <div class="stat-card">
-    <div class="stat-info">
-      <span class="stat-label">نودهای Edge</span>
-      <span class="stat-value">{{onlineCount}} / {{nodeCount}}</span>
-    </div>
-    <div class="stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success);">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-    </div>
+    <div class="stat-info"><span class="stat-label">لیدهای ثبت‌شده در Edgeها</span><span class="stat-value">{{formMetrics.edgeLeads}}</span></div>
+    <div class="stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info"><span class="stat-label">فرم‌های دریافت‌کننده لید</span><span class="stat-value">{{formMetrics.formsWithLeads}}</span><small style="color: var(--text-muted);">{{formMetrics.formsWithoutLeads}} فرم بدون لید</small></div>
+    <div class="stat-icon" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-info"><span class="stat-label">نودهای Edge</span><span class="stat-value">{{onlineCount}} / {{nodeCount}}</span><small style="color: var(--text-muted);">آنلاین / کل نودها</small></div>
+    <div class="stat-icon" style="background: rgba(59, 130, 246, 0.12); color: #60a5fa;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20"/><path d="M12 2a15.3 15.3 0 0 0 0 20"/></svg></div>
   </div>
 </div>
 
 <div class="content-wrapper">
-  <div class="section-header">
-    <span>فرم‌های موجود در سیستم</span>
-    <span class="status-pill">{{forms.length}} فرم</span>
-  </div>
+  <div class="section-header"><span>لیدهای دریافت‌شده در لبه‌ها</span><span class="status-pill">{{formMetrics.edgeLeads}} لید</span></div>
   <div class="table-responsive">
     <table class="data-table">
-      <thead>
-        <tr>
-          <th>عنوان فرم</th>
-          <th>کلید یکتا (Key)</th>
-          <th>اسلاگ</th>
-          <th>تعداد فیلدها</th>
-          <th class="actions">عملیات</th>
-        </tr>
-      </thead>
+      <thead><tr><th>نود Edge</th><th>وضعیت نود</th><th class="actions">تعداد لید</th></tr></thead>
       <tbody>
-        {{#each forms}}
-        <tr>
-          <td style="font-weight: 600;">{{title}}</td>
-          <td><code>{{key}}</code></td>
-          <td>{{slug}}</td>
-          <td><span class="status-pill" style="background: rgba(255,255,255,0.06); color: var(--text-main);">{{fieldCount}} فیلد</span></td>
-          <td class="actions"><a href="/spadmin/forms/{{id}}" class="btn-subtle"><span>ویرایش فرم</span></a></td>
-        </tr>
+        {{#each formMetrics.edgeNodes}}
+          <tr><td style="font-weight: 600;">{{title}}</td><td><span class="status-pill">{{status}}</span></td><td class="actions">{{leadCount}} لید</td></tr>
         {{else}}
-        <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">هنوز فرمی در سیستم ثبت نشده است.</td></tr>
+          <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 2rem;">هنوز نود Edge ثبت نشده است.</td></tr>
         {{/each}}
       </tbody>
     </table>

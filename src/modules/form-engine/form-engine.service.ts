@@ -25,6 +25,45 @@ export class FormEngineService {
     return this.prisma.form.findMany({ orderBy: { updatedAt: 'desc' } });
   }
 
+  listWithSubmissionCounts() {
+    return this.prisma.form.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: { _count: { select: { submissions: true } } },
+    });
+  }
+
+  async getDashboardMetrics() {
+    const [forms, edgeNodes] = await Promise.all([
+      this.prisma.form.findMany({
+        include: { _count: { select: { submissions: true } } },
+      }),
+      this.prisma.edgeNode.findMany({
+        orderBy: { title: 'asc' },
+        include: { _count: { select: { submissions: true } } },
+      }),
+    ]);
+
+    const formsWithLeads = forms.filter(
+      (form) => form._count.submissions > 0,
+    ).length;
+    const edgeLeads = edgeNodes.reduce(
+      (total, node) => total + node._count.submissions,
+      0,
+    );
+
+    return {
+      formsWithLeads,
+      formsWithoutLeads: forms.length - formsWithLeads,
+      edgeLeads,
+      edgeNodes: edgeNodes.map((node) => ({
+        id: node.id,
+        title: node.title,
+        status: node.status,
+        leadCount: node._count.submissions,
+      })),
+    };
+  }
+
   async getById(id: string) {
     const form = await this.prisma.form.findUnique({ where: { id } });
     if (!form) throw new NotFoundException('Form not found');
@@ -408,32 +447,56 @@ export class FormEngineService {
     }
   }
 
-  async listWebhookInvocations(page: number, pageSize: number) {
-    const skip = (page - 1) * pageSize;
-    const [total, items] = await this.prisma.$transaction([
-      this.prisma.webhookInvocation.count(),
-      this.prisma.webhookInvocation.findMany({
-        include: {
-          submission: {
-            include: {
-              form: { select: { title: true, key: true } },
-              edgeNode: { select: { title: true } },
+  async listWebhookInvocations(page?: number, pageSize?: number) {
+    if (page !== undefined && pageSize !== undefined) {
+      const skip = (page - 1) * pageSize;
+      const [total, items] = await this.prisma.$transaction([
+        this.prisma.webhookInvocation.count(),
+        this.prisma.webhookInvocation.findMany({
+          include: {
+            submission: {
+              include: {
+                form: { select: { title: true, key: true } },
+                edgeNode: { select: { title: true } },
+              },
             },
           },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: pageSize,
+        }),
+      ]);
+
+      return {
+        items,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / pageSize)),
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize,
-      }),
-    ]);
+      };
+    }
+
+    const items = await this.prisma.webhookInvocation.findMany({
+      include: {
+        submission: {
+          include: {
+            form: { select: { title: true, key: true } },
+            edgeNode: { select: { title: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
       items,
       pagination: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        page: 1,
+        pageSize: items.length,
+        total: items.length,
+        totalPages: 1,
       },
     };
   }
@@ -442,7 +505,8 @@ export class FormEngineService {
     return this.prisma.formSubmission.findMany({
       where: { webhookStatus: 'FAILED' },
       include: {
-        form: { select: { title: true } },
+        form: { select: { title: true, key: true } },
+        edgeNode: { select: { title: true, host: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -454,6 +518,7 @@ export class FormEngineService {
     toDate?: Date,
     otpFilter?: string,
     utmFilter?: string,
+    limit?: number,
   ) {
     const where: Prisma.FormSubmissionWhereInput = {};
     if (formId) where.formId = formId;
@@ -480,14 +545,14 @@ export class FormEngineService {
       where,
       include: {
         form: {
-          select: { title: true },
+          select: { title: true, key: true },
         },
         edgeNode: {
           select: { title: true, host: true },
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 100, // محدودیت پیش‌فرض، در صورت نیاز می‌توان صفحه‌بندی اضافه کرد
+      ...(limit !== undefined ? { take: limit } : {}),
     });
   }
 
