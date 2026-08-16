@@ -164,7 +164,7 @@
         {{#each landings}}
         <tr>
           <td>
-            <a href="/{{slug}}/" target="_blank" rel="noopener" style="font-weight: 600; color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
+            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" target="_blank" rel="noopener" style="font-weight: 600; color: var(--accent-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
               <span>{{slug}}</span>
             </a>
@@ -180,7 +180,7 @@
           <td><code>{{checksumShort}}</code></td>
           <td style="color: var(--text-muted); font-size: 0.85rem;">{{updatedAtFa}}</td>
           <td class="actions" style="display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center;">
-            <a href="/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener" title="مشاهده آنلاین لندینگ">
+            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener" title="مشاهده آنلاین لندینگ">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               <span>مشاهده</span>
             </a>
@@ -193,9 +193,15 @@
               <span>دانلود ZIP</span>
             </a>
             <form method="POST" action="/spadmin/landings/sync/{{slug}}" style="margin: 0;">
-              <button type="submit" class="btn-subtle" style="color: #6366f1;" title="ارسال مجدد این لندینگ به صف همگام‌سازی">
+              <button type="submit" class="btn btn-subtle" style="color: #6366f1;" title="ارسال مجدد این لندینگ به صف همگام‌سازی">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                 <span>سینک</span>
+              </button>
+            </form>
+            <form method="POST" action="/spadmin/landings/delete/{{slug}}" style="margin: 0;" onsubmit="return confirm('آیا از حذف کامل لندینگ {{slug}} و ارسال دستور حذف به تمام نودهای Edge مطمئن هستید؟');">
+              <button type="submit" class="btn btn-subtle" style="color: #ef4444;" title="حذف کامل لندینگ">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                <span>حذف</span>
               </button>
             </form>
           </td>

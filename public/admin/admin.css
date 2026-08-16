@@ -1417,3 +1417,12 @@ textarea.form-control {
     grid-template-columns: 1fr;
   }
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1.2s linear infinite;
+}

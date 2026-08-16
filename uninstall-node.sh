@@ -33,7 +33,7 @@ if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>
 else
   echo -e "${yellow}Stopping Edge containers and removing volumes...${plain}"
   # هر سه مدل compose رو می‌بندیم (bridge / host override / remote)
-  for f in docker-compose.node.remote.yml docker-compose.node.host.yml docker-compose.node.yml docker-compose.master.yml; do
+  for f in docker-compose.node.remote.yml docker-compose.node.yml docker-compose.master.yml; do
     [[ -f "$f" ]] || continue
     if [[ -f .env ]]; then
       docker compose -f "$f" --env-file .env down -v --remove-orphans 2>/dev/null || true

@@ -203,7 +203,7 @@ elif grep -q '^SYNC_PULL_ENABLED=0' .env 2>/dev/null; then
 fi
 
 # استک قدیمی (مدل قبلی) رو ببند تا با remote تداخل نکنه
-for f in docker-compose.node.yml docker-compose.node.host.yml docker-compose.node.remote.yml; do
+for f in docker-compose.node.yml docker-compose.node.remote.yml; do
   [[ -f "$f" ]] || continue
   [[ "$f" == "$COMPOSE_FILE" ]] && continue
   docker compose -f "$f" --env-file .env down --remove-orphans 2>/dev/null || true

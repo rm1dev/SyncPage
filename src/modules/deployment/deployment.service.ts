@@ -206,6 +206,42 @@ export class DeploymentService implements OnModuleInit {
     return { synced: landings.length };
   }
 
+  async deleteLanding(slug: string) {
+    const landing = await this.prisma.landing.findUnique({ where: { slug } });
+    if (!landing) throw new NotFoundException('لندینگ یافت نشد');
+
+    const idempotencyKey = `landing:${slug}:delete:${Date.now()}`;
+
+    // تراکنش: حذف لندینگ و افزودن ایونت به Outbox
+    await this.prisma.$transaction(async (tx) => {
+      await tx.landing.delete({ where: { slug } });
+      await tx.outboxEvent.create({
+        data: {
+          eventType: 'landing.delete',
+          idempotencyKey,
+          payload: { slug, idempotencyKey } as Prisma.InputJsonValue,
+        },
+      });
+    });
+
+    // حذف فایل‌های فیزیکی
+    const { rmSync } = await import('fs');
+    
+    // ۱. حذف فولدر استاتیک
+    const staticDir = join(this.files.staticRoot, slug);
+    if (existsSync(staticDir)) {
+      rmSync(staticDir, { recursive: true, force: true });
+    }
+
+    // ۲. حذف پکیج ZIP
+    const packageZip = join(this.files.tempRoot, 'packages', `${slug}.zip`);
+    if (existsSync(packageZip)) {
+      rmSync(packageZip, { force: true });
+    }
+
+    return { slug };
+  }
+
   getPackagePath(slug: string): string {
     const path = join(this.files.tempRoot, 'packages', `${slug}.zip`);
     if (!existsSync(path)) {

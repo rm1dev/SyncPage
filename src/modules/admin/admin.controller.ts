@@ -92,6 +92,8 @@ export class AdminController {
       this.outbox.getMasterPendingSyncCount(),
     ]);
     const outdatedNodes = nodesVersion.nodes.filter((n) => n.outdated);
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL || '';
+    
     return {
       layout: 'main',
       title: 'داشبورد',
@@ -112,6 +114,7 @@ export class AdminController {
       })),
       nodeCount: nodes.length,
       onlineCount: nodes.filter((n) => n.status === 'ONLINE').length,
+      publicBaseUrl,
     };
   }
 
@@ -391,6 +394,8 @@ export class AdminController {
       };
     });
 
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL || '';
+
     return {
       layout: 'main',
       title: 'مدیریت لندینگ‌ها',
@@ -403,6 +408,7 @@ export class AdminController {
       previewUrl,
       flash,
       error,
+      publicBaseUrl,
     };
   }
 
@@ -485,6 +491,18 @@ export class AdminController {
       return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`همگام‌سازی مجدد ${slug} آغاز شد`)}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'همگام‌سازی ناموفق بود';
+      return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  @Post('landings/delete/:slug')
+  @UseGuards(AdminTokenGuard)
+  async deleteLanding(@Param('slug') slug: string, @Res() res: Response) {
+    try {
+      await this.deployment.deleteLanding(slug);
+      return res.redirect(`/spadmin/landings?flash=${encodeURIComponent(`لندینگ ${slug} حذف شد و دستور حذف به نودها ارسال گردید`)}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'حذف ناموفق بود';
       return res.redirect(`/spadmin/landings?error=${encodeURIComponent(message)}`);
     }
   }

@@ -107,6 +107,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       for (const item of manifest.landings ?? []) {
         await this.syncOne(item);
       }
+      await this.cleanupDeletedLandings(manifest.landings ?? []);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`HTTP sync pull failed: ${message}`);
@@ -222,6 +223,23 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`HTTP pull form cleanup failed: ${message}`);
+    }
+  }
+
+  private async cleanupDeletedLandings(landings: ManifestItem[]) {
+    try {
+      const activeSlugs = new Set(landings.map((l) => l.slug));
+      const locals = await this.prisma.landing.findMany({ select: { slug: true } });
+      for (const local of locals) {
+        if (!activeSlugs.has(local.slug)) {
+          const idempotencyKey = `landing:${local.slug}:delete:sync-pull:${Date.now()}`;
+          await this.apply.deleteLanding({ slug: local.slug, idempotencyKey });
+          this.logger.log(`Landing removed via HTTP pull: ${local.slug}`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`HTTP pull landing cleanup failed: ${message}`);
     }
   }
 

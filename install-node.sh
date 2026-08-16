@@ -43,7 +43,7 @@ stop_existing_edge() {
   [[ -d "$dir" ]] || return 0
   (
     cd "$dir"
-    for f in docker-compose.node.remote.yml docker-compose.node.host.yml docker-compose.node.yml; do
+    for f in docker-compose.node.remote.yml docker-compose.node.yml; do
       [[ -f "$f" ]] || continue
       docker compose -f "$f" --env-file .env down --remove-orphans 2>/dev/null || \
         docker compose -f "$f" down --remove-orphans 2>/dev/null || true

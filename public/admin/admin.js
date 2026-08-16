@@ -340,6 +340,61 @@ document.addEventListener('DOMContentLoaded', () => {
     keyInput?.addEventListener('input', refreshLandingSnippets);
   }
 
+  // --- همگام‌سازی لندینگ (آیکن سینک) ---
+  document.querySelectorAll('form[action*="/landings/sync/"]').forEach(form => {
+    // Avoid double attaching if it's the sync-all form
+    if (form.getAttribute('action')?.endsWith('/sync-all')) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button');
+      if (!btn) return;
+      
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="icon spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span>سینک...</span>';
+
+      try {
+        const [res] = await Promise.all([
+          fetch(form.action, { method: 'POST' }),
+          new Promise(r => setTimeout(r, 600)) // مکث مصنوعی برای دیده شدن لودینگ
+        ]);
+        if (!res.ok) throw new Error('خطا در همگام‌سازی');
+        showToast('فرمان همگام‌سازی با موفقیت ارسال شد.', 'success');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+  });
+
+  document.querySelectorAll('form[action$="/landings/sync-all"]').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button');
+      if (!btn) return;
+      
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="icon spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>در حال ارسال...</span>';
+
+      try {
+        const [res] = await Promise.all([
+          fetch(form.action, { method: 'POST' }),
+          new Promise(r => setTimeout(r, 600)) // مکث مصنوعی برای دیده شدن لودینگ
+        ]);
+        if (!res.ok) throw new Error('خطا در همگام‌سازی سراسری');
+        showToast('فرمان همگام‌سازی سراسری با موفقیت ارسال شد.', 'success');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+  });
+
   // ===================================================================
   //  FILE MANAGER: مرور، ویرایش و دانلود فایل‌های لندینگ
   // ===================================================================

@@ -351,4 +351,26 @@ export class LandingApplyService {
       this.activeDownload = null;
     }
   }
+
+  async deleteLanding(payload: { slug: string; idempotencyKey: string }) {
+    this.logger.log(`Deleting landing ${payload.slug} from edge...`);
+    
+    // ۱. حذف از دیتابیس لوکال
+    const existing = await this.prisma.landing.findUnique({
+      where: { slug: payload.slug },
+    });
+    if (existing) {
+      await this.prisma.landing.delete({ where: { slug: payload.slug } });
+    }
+
+    // ۲. حذف از فایل‌سیستم
+    const staticDir = join(this.files.staticRoot, payload.slug);
+    if (existsSync(staticDir)) {
+      rmSync(staticDir, { recursive: true, force: true });
+    }
+    const packageZip = join(this.files.tempRoot, 'packages', `${payload.slug}.zip`);
+    if (existsSync(packageZip)) {
+      rmSync(packageZip, { force: true });
+    }
+  }
 }

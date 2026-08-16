@@ -67,6 +67,43 @@ export class SyncConsumerController {
     }
   }
 
+  @EventPattern('landing.delete')
+  async handleLandingDelete(
+    @Payload()
+    raw: { slug: string; idempotencyKey: string } | { pattern?: string; data?: { slug: string; idempotencyKey: string } },
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const payload = this.unwrap<{ slug: string; idempotencyKey: string }>(raw);
+
+    try {
+      if (!isEdge()) {
+        this.logger.warn('Ignoring landing.delete on non-EDGE node');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (!payload?.idempotencyKey || !payload.slug) {
+        this.logger.error('Invalid landing.delete payload');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (await this.landingApply.alreadyProcessed(payload.idempotencyKey)) {
+        channel.ack(originalMsg);
+        return;
+      }
+
+      await this.landingApply.deleteLanding(payload);
+      await this.landingApply.markProcessed(payload.idempotencyKey);
+      this.logger.log(`Landing deleted on edge: ${payload.slug}`);
+      channel.ack(originalMsg);
+    } catch (err) {
+      this.fail(err, channel, originalMsg);
+    }
+  }
+
   @EventPattern('form.sync')
   async handleFormSync(
     @Payload()

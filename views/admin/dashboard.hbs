@@ -165,12 +165,17 @@
       <tbody>
         {{#each landings}}
         <tr>
-          <td style="font-weight: 600;">{{slug}}</td>
+          <td>
+            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" target="_blank" rel="noopener" style="font-weight: 600; color: var(--text-main); text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              <span>{{slug}}</span>
+            </a>
+          </td>
           <td><code>v{{version}}</code></td>
           <td><span class="status-pill">{{status}}</span></td>
           <td><code>{{checksumShort}}</code></td>
           <td class="actions" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <a href="/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener">
+            <a href="{{#if ../publicBaseUrl}}{{../publicBaseUrl}}{{/if}}/{{slug}}/" class="btn-subtle" target="_blank" rel="noopener">
               <span>مشاهده</span>
             </a>
             <form method="POST" action="/spadmin/landings/sync/{{slug}}" style="margin: 0;">
