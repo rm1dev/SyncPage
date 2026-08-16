@@ -12,9 +12,13 @@
 <div class="content-wrapper webhook-history" data-endpoint="/spadmin/api/webhook-invocations">
   <div class="section-header">
     <span>تاریخچه فراخوانی‌ها</span>
-    <div class="webhook-history-actions">
+    <div class="webhook-history-actions" style="display: flex; align-items: center; gap: 0.5rem;">
       <span id="webhook-history-count" class="status-pill">در حال دریافت...</span>
       <button id="webhook-history-refresh" type="button" class="btn btn-primary">بروزرسانی</button>
+      <a href="/spadmin/developers/webhook-history/export/excel" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem; background: #059669; border-color: #059669; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>خروجی اکسل</span>
+      </a>
     </div>
   </div>
   <p id="webhook-history-message" class="webhook-history-message" aria-live="polite"></p>
