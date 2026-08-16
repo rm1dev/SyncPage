@@ -1,0 +1,92 @@
+<header class="page-header">
+  <div class="page-header-title">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle Sidebar">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <h1>مدیریت فرم‌ها</h1>
+    </div>
+    <span class="subtitle">ایجاد، ویرایش و مشاهده عملکرد فرم‌های ثبت لید</span>
+  </div>
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <a href="/spadmin/profiles" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); text-decoration: none; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.9rem;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+      <span>مدیریت پروفایل‌ها</span>
+    </a>
+    <button type="button" class="btn btn-primary" id="btn-toggle-form-editor">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>افزودن فرم جدید</span>
+    </button>
+  </div>
+</header>
+
+{{#if error}}
+  <div class="alert alert-error"><span>{{error}}</span></div>
+{{/if}}
+{{#if flash}}
+  <div class="alert alert-ok"><span>{{flash}}</span></div>
+{{/if}}
+
+<div id="form-editor-section" style="{{#if showEditor}}display: block;{{else}}display: none;{{/if}} margin-bottom: 2rem;">
+  {{> form-editor}}
+</div>
+
+<div class="content-wrapper">
+  <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <span>لیست فرم‌ها</span>
+      <span class="status-pill">{{forms.length}} فرم</span>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>عنوان فرم</th>
+          <th>کلید یکتا</th>
+          <th>فیلدها</th>
+          <th>وضعیت</th>
+          <th>لیدهای دریافت‌شده</th>
+          <th class="actions">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each forms}}
+          <tr>
+            <td style="font-weight: 600;">{{title}}<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">/{{slug}}</div></td>
+            <td><code>{{key}}</code></td>
+            <td><span class="status-pill">{{fieldCount}} فیلد</span></td>
+            <td>
+              {{#if hasSubmissions}}
+                <span class="status-pill status-ok">دریافت لید</span>
+              {{else}}
+                <span class="status-pill">بدون لید</span>
+              {{/if}}
+            </td>
+            <td><a href="/spadmin/submissions?formId={{id}}" class="btn-subtle">{{submissionCount}} لید</a></td>
+            <td class="actions"><a href="/spadmin/forms?edit={{id}}" class="btn-subtle">ویرایش</a></td>
+          </tr>
+        {{else}}
+          <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">هنوز فرمی در سیستم ثبت نشده است.</td></tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('btn-toggle-form-editor');
+    const section = document.getElementById('form-editor-section');
+    if (toggle && section) {
+      toggle.addEventListener('click', function () {
+        const isHidden = section.style.display === 'none' || section.style.display === '';
+        if (isHidden) {
+          window.location.href = '/spadmin/forms?new=1';
+          return;
+        }
+        section.style.display = 'none';
+      });
+    }
+  });
+</script>
