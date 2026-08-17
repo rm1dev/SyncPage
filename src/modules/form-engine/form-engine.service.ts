@@ -10,6 +10,7 @@ import { isEdge, isMaster } from '../../config/role';
 import { OutboxService } from '../sync/outbox.service';
 import { WebhookService } from './webhook.service';
 import { KavenegarService } from './kavenegar.service';
+import { CategoryService } from '../categories/category.service';
 import { CreateFormDto, UpdateFormDto } from './dto/form.dto';
 
 @Injectable()
@@ -19,16 +20,36 @@ export class FormEngineService {
     private readonly outbox: OutboxService,
     private readonly webhook: WebhookService,
     private readonly kavenegar: KavenegarService,
+    private readonly categories: CategoryService,
   ) {}
 
   list() {
-    return this.prisma.form.findMany({ orderBy: { updatedAt: 'desc' } });
-  }
-
-  listWithSubmissionCounts() {
     return this.prisma.form.findMany({
       orderBy: { updatedAt: 'desc' },
-      include: { _count: { select: { submissions: true } } },
+      include: { category: true },
+    });
+  }
+
+  listWithSubmissionCounts(q?: string) {
+    const query = q?.trim();
+    const where: Prisma.FormWhereInput | undefined = query
+      ? {
+          OR: [
+            { title: { contains: query, mode: 'insensitive' } },
+            { key: { contains: query, mode: 'insensitive' } },
+            { slug: { contains: query, mode: 'insensitive' } },
+            { category: { name: { contains: query, mode: 'insensitive' } } },
+          ],
+        }
+      : undefined;
+
+    return this.prisma.form.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        category: true,
+        _count: { select: { submissions: true } },
+      },
     });
   }
 
@@ -65,7 +86,10 @@ export class FormEngineService {
   }
 
   async getById(id: string) {
-    const form = await this.prisma.form.findUnique({ where: { id } });
+    const form = await this.prisma.form.findUnique({
+      where: { id },
+      include: { category: true },
+    });
     if (!form) throw new NotFoundException('Form not found');
     return form;
   }
@@ -77,9 +101,11 @@ export class FormEngineService {
   }
 
   async create(dto: CreateFormDto) {
+    await this.categories.requireById(dto.categoryId);
     const form = await this.prisma.form.create({
       data: {
         title: dto.title,
+        categoryId: dto.categoryId || null,
         key: dto.key,
         slug: dto.slug,
         body: dto.body as Prisma.InputJsonValue,
@@ -94,6 +120,7 @@ export class FormEngineService {
         otpLength: dto.otpLength || 5,
         profileId: dto.profileId || null,
       },
+      include: { category: true },
     });
     // تعریف فرم رو برای Edgeها می‌فرستیم
     if (isMaster()) {
@@ -104,10 +131,16 @@ export class FormEngineService {
 
   async update(id: string, dto: UpdateFormDto) {
     await this.getById(id);
+    if (dto.categoryId !== undefined) {
+      await this.categories.requireById(dto.categoryId);
+    }
     const form = await this.prisma.form.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.categoryId !== undefined
+          ? { categoryId: dto.categoryId || null }
+          : {}),
         ...(dto.slug !== undefined ? { slug: dto.slug } : {}),
         ...(dto.body !== undefined
           ? { body: dto.body as Prisma.InputJsonValue }
@@ -143,6 +176,7 @@ export class FormEngineService {
           ? { profileId: dto.profileId || null }
           : {}),
       },
+      include: { category: true },
     });
     if (isMaster()) {
       await this.enqueueFormUpsert(form);
@@ -559,6 +593,7 @@ export class FormEngineService {
   private async enqueueFormUpsert(form: {
     id: string;
     title: string;
+    category?: { name: string } | null;
     key: string;
     slug: string;
     body: unknown;
@@ -580,6 +615,7 @@ export class FormEngineService {
       form: {
         id: form.id,
         title: form.title,
+        category: form.category?.name || null,
         key: form.key,
         slug: form.slug,
         body: form.body,

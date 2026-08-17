@@ -1783,3 +1783,205 @@ textarea.form-control {
     width: 100%;
   }
 }
+
+.category-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(440px, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+
+.category-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(9px);
+}
+
+/* Category header and hover actions */
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.category-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.category-hover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.category-hover-actions form {
+  display: inline-flex !important;
+  align-items: center;
+  height: 100%;
+  margin: 0 !important;
+}
+
+.category-card:hover .category-hover-actions,
+.category-row:hover .category-hover-actions,
+tr.category-row:hover .category-hover-actions {
+  opacity: 1;
+  visibility: visible;
+}
+
+.category-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  min-width: 72px;
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  appearance: none;
+  transition: all 0.15s ease;
+  line-height: 1;
+  gap: 0.25rem;
+}
+
+.category-action-btn:hover {
+  color: var(--text-main);
+  border-color: var(--accent-primary);
+  background: rgba(6, 182, 212, 0.12);
+}
+
+.category-action-btn.btn-delete:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+
+/* =====================================================================
+   Tom Select — هماهنگ با تم دارک پنل (RTL)
+   ===================================================================== */
+.ts-wrapper {
+  width: 100%;
+}
+
+/* اگر TomSelect مستقیما روی فرم‌کنترل کلاس‌دار جایگزین شد، پدینگ دوبل نشه */
+.form-control.ts-wrapper {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ts-wrapper .ts-control {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.85rem 1.15rem;
+  box-shadow: none;
+  min-height: auto;
+  line-height: normal;
+  transition: all var(--transition-fast);
+}
+
+.ts-wrapper .ts-control > input {
+  font-family: inherit;
+  color: var(--text-main);
+  caret-color: var(--accent-primary);
+}
+
+.ts-wrapper.focus .ts-control,
+.ts-wrapper.is-focused .ts-control {
+  border-color: var(--glass-border-focus);
+  box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.15);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.ts-wrapper .ts-control .item {
+  color: var(--text-main);
+}
+
+.ts-wrapper .ts-control input::-webkit-input-placeholder {
+  color: var(--text-muted);
+}
+
+.ts-dropdown {
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  box-shadow: var(--glass-shadow);
+  margin-top: 4px;
+  z-index: 10000;
+}
+
+.category-dialog .ts-wrapper {
+  position: relative;
+  z-index: 10001;
+}
+
+.category-dialog .ts-dropdown {
+  z-index: 10002;
+}
+
+.ts-dropdown [data-selectable] {
+  padding: 0.6rem 1rem;
+  color: var(--text-main);
+}
+
+.ts-dropdown [data-selectable].active {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.ts-dropdown [data-selectable].selected {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--text-main);
+}
+
+.ts-dropdown .no-results,
+.ts-dropdown .create {
+  padding: 0.6rem 1rem;
+  color: var(--text-muted);
+}
+
+.ts-wrapper .ts-control .ts-dropdown {
+  direction: rtl;
+}
+
+.ts-wrapper.rtl .ts-control,
+.ts-wrapper .ts-control {
+  text-align: right;
+}
+
+.ts-dropdown-content {
+  max-height: 260px;
+}
+
+/* گزینه‌های ناتوان برای مود multiselect */
+.ts-wrapper .ts-control .item.active {
+  background: rgba(6, 182, 212, 0.15);
+}

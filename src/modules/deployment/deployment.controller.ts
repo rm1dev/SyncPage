@@ -70,11 +70,13 @@ export class DeploymentController {
 
   @Post('api/landings/confirm')
   @UseGuards(MasterOnlyGuard, AdminTokenGuard)
-  confirm(@Body() body: { previewId: string; slug: string }) {
+  confirm(
+    @Body() body: { previewId: string; slug: string; category?: string },
+  ) {
     if (!body?.previewId || !body?.slug) {
       throw new BadRequestException('previewId and slug are required');
     }
-    return this.deployment.confirm(body.previewId, body.slug);
+    return this.deployment.confirm(body.previewId, body.slug, body.category);
   }
 
   @Get('api/internal/landings/:slug/package/:packageFile')

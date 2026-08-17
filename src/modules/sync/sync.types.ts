@@ -22,6 +22,7 @@ export interface FormSyncPayload {
   form?: {
     id: string;
     title: string;
+    category?: string | null;
     key: string;
     slug: string;
     body: unknown;

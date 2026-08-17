@@ -24,6 +24,7 @@ type ManifestItem = {
 type FormManifestItem = {
   id: string;
   title: string;
+  category?: string | null;
   key: string;
   slug: string;
   body: unknown;
@@ -171,11 +172,26 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       if (!f?.key || !f.idempotencyKey) continue;
       try {
         if (await this.apply.alreadyProcessed(f.idempotencyKey)) continue;
+        const categoryId = f.category
+          ? (
+              await this.prisma.category.upsert({
+                where: {
+                  normalizedName: f.category.toLocaleLowerCase('fa-IR'),
+                },
+                create: {
+                  name: f.category,
+                  normalizedName: f.category.toLocaleLowerCase('fa-IR'),
+                },
+                update: {},
+              })
+            ).id
+          : null;
         await this.prisma.form.upsert({
           where: { key: f.key },
           create: {
             id: f.id,
             title: f.title,
+            categoryId,
             key: f.key,
             slug: f.slug,
             body: f.body as Prisma.InputJsonValue,
@@ -193,6 +209,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
           },
           update: {
             title: f.title,
+            ...(Object.prototype.hasOwnProperty.call(f, 'category')
+              ? { categoryId }
+              : {}),
             slug: f.slug,
             body: f.body as Prisma.InputJsonValue,
             webhookUrl: f.webhookUrl || null,

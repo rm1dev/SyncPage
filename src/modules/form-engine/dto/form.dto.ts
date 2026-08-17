@@ -14,6 +14,10 @@ export class CreateFormDto {
   @MinLength(1)
   title!: string;
 
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
+
   @IsString()
   @MinLength(1)
   key!: string;
@@ -72,6 +76,10 @@ export class UpdateFormDto {
   @IsString()
   @MinLength(1)
   title?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
 
   @IsOptional()
   @IsString()

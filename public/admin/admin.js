@@ -992,21 +992,7 @@ function fmFormatSize(bytes) {
 let __cmPromise = null;
 function fmLoadCodeMirror() {
   if (__cmPromise) return __cmPromise;
-  __cmPromise = (async () => {
-    const [view, state, lang] = await Promise.all([
-      import('https://esm.sh/@codemirror/view@6'),
-      import('https://esm.sh/@codemirror/state@6'),
-      import('https://esm.sh/@codemirror/language@6'),
-    ]);
-    const { html } = await import('https://esm.sh/@codemirror/lang-html@6');
-    const { css } = await import('https://esm.sh/@codemirror/lang-css@6');
-    const { javascript } =
-      await import('https://esm.sh/@codemirror/lang-javascript@6');
-    const { json } = await import('https://esm.sh/@codemirror/lang-json@6');
-    const { oneDark } =
-      await import('https://esm.sh/@codemirror/theme-one-dark@6');
-    return { view, state, lang, html, css, javascript, json, oneDark };
-  })();
+  __cmPromise = import('/public/vendor/codemirror/codemirror.bundle.js');
   return __cmPromise;
 }
 
@@ -1442,3 +1428,36 @@ function initWebhookHistory() {
 }
 
 document.addEventListener('DOMContentLoaded', initWebhookHistory);
+
+// =====================================================================
+//  TomSelect (استخراج سراسری select‌ها به Tom Select)
+// =====================================================================
+function initTomSelect() {
+  if (typeof TomSelect !== 'function') return;
+
+  document.querySelectorAll('select').forEach((select) => {
+    // از قبل مقداردهی شده؟
+    if (select.tomselect) return;
+    // از .field-field-row (سلکتور داخلی نوع فیلد در بیلدر) صرف‌نظر کن
+    if (select.closest('.field-row')) return;
+    // از تبدیل فیلدهایی که صریحا مستثنی شده‌اند صرف‌نظر کن
+    if (select.hasAttribute('data-tom-select-off')) return;
+
+    const dialog = select.closest('dialog');
+
+    try {
+      new TomSelect(select, {
+        create: false,
+        // گزینه‌های با مقدار خالی (مثل «همه فرم‌ها»، «بدون دسته‌بندی») قابل انتخاب بمانند
+        allowEmptyOption: true,
+        // dropdown دیالوگ داخل wrapper همان کنترل و top layer می‌ماند؛ سایر dropdownها در body رندر می‌شوند
+        dropdownParent: dialog ? null : 'body',
+      });
+    } catch (error) {
+      // اگر عنصر پشتیبانی‌نشده باشد، به select بومی بازگرد
+      void error;
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initTomSelect);

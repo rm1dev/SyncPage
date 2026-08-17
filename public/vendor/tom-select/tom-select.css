@@ -28,9 +28,6 @@
 .ts-wrapper.multi.has-items .ts-control {
   padding: calc(8px - 2px - 0px) 8px calc(8px - 2px - 3px - 0px);
 }
-.full .ts-control {
-  background-color: #fff;
-}
 .disabled .ts-control, .disabled .ts-control * {
   cursor: default !important;
 }
@@ -115,7 +112,6 @@
   width: 100%;
   z-index: 10;
   border: 1px solid #d0d0d0;
-  background: #fff;
   margin: 0.25rem 0 0;
   border-top: 0 none;
   box-sizing: border-box;
@@ -149,7 +145,6 @@
 }
 .ts-dropdown .optgroup-header {
   color: #303030;
-  background: #fff;
   cursor: default;
 }
 .ts-dropdown .active {
@@ -235,7 +230,6 @@
   position: relative;
   padding: 10px 8px;
   border-bottom: 1px solid #d0d0d0;
-  background: color-mix(#fff, #d0d0d0, 85%);
   border-radius: 3px 3px 0 0;
 }
 .ts-wrapper .dropdown-header-close {
@@ -395,7 +389,6 @@
 
 .ts-control,
 .ts-wrapper.single.input-active .ts-control {
-  background: #fff;
   cursor: text;
 }
 

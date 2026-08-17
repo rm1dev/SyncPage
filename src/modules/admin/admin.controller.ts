@@ -25,7 +25,10 @@ import { DeploymentService } from '../deployment/deployment.service';
 import { NodesService } from '../nodes/nodes.service';
 import { VersionService } from '../updates/version.service';
 import { isOutdated } from '../../common/app-version';
-import { createExcelWorkbook, formatJalaliDateTime } from '../../common/excel.util';
+import {
+  createExcelWorkbook,
+  formatJalaliDateTime,
+} from '../../common/excel.util';
 // jdate.js extends standard classes
 import 'jdate.js';
 
@@ -33,6 +36,7 @@ import { WebhookService } from '../form-engine/webhook.service';
 import { KavenegarService } from '../form-engine/kavenegar.service';
 import { IntegrationProfileService } from '../form-engine/integration-profile.service';
 import { OutboxService } from '../sync/outbox.service';
+import { CategoryService } from '../categories/category.service';
 
 @Controller('spadmin')
 export class AdminController {
@@ -46,7 +50,35 @@ export class AdminController {
     private readonly profiles: IntegrationProfileService,
     private readonly outbox: OutboxService,
     private readonly config: ConfigService,
+    private readonly categories: CategoryService,
   ) {}
+
+  private groupByCategory<
+    T extends { category?: { id: string; name: string } | null },
+  >(items: T[]) {
+    const groups = new Map<
+      string,
+      { id?: string; name: string; isDefault: boolean; items: T[] }
+    >();
+    for (const item of items) {
+      const name = item.category?.name || 'بدون دسته بندی';
+      const id = item.category?.id;
+      const isDefault = !item.category;
+      const group = groups.get(name) || {
+        id,
+        name,
+        isDefault,
+        items: [],
+      };
+      group.items.push(item);
+      groups.set(name, group);
+    }
+    return [...groups.values()].sort((a, b) => {
+      if (a.isDefault) return 1;
+      if (b.isDefault) return -1;
+      return a.name.localeCompare(b.name, 'fa');
+    });
+  }
 
   @Get('login')
   @Render('admin/login')
@@ -254,14 +286,16 @@ export class AdminController {
   @UseGuards(AdminTokenGuard)
   @Render('admin/forms')
   async formsPage(
+    @Query('q') q?: string,
     @Query('edit') editId?: string,
     @Query('new') newForm?: string,
     @Query('flash') flash?: string,
     @Query('error') error?: string,
   ) {
-    const [rawForms, profiles] = await Promise.all([
-      this.forms.listWithSubmissionCounts(),
+    const [rawForms, profiles, categories] = await Promise.all([
+      this.forms.listWithSubmissionCounts(q),
       this.profiles.list(),
+      this.categories.list(),
     ]);
 
     let form: any = {
@@ -307,7 +341,16 @@ export class AdminController {
             submissionCount: item._count.submissions,
             hasSubmissions: item._count.submissions > 0,
           })),
+          formGroups: this.groupByCategory(
+            rawForms.map((item) => ({
+              ...item,
+              fieldCount: Array.isArray(item.body) ? item.body.length : 0,
+              submissionCount: item._count.submissions,
+              hasSubmissions: item._count.submissions > 0,
+            })),
+          ),
           profiles,
+          categories,
           form,
           bodyJson,
           columnMappingJson,
@@ -316,6 +359,7 @@ export class AdminController {
           editing: false,
           showEditor: false,
           flash,
+          q,
         };
       }
     }
@@ -330,11 +374,21 @@ export class AdminController {
         submissionCount: item._count.submissions,
         hasSubmissions: item._count.submissions > 0,
       })),
+      formGroups: this.groupByCategory(
+        rawForms.map((item) => ({
+          ...item,
+          fieldCount: Array.isArray(item.body) ? item.body.length : 0,
+          submissionCount: item._count.submissions,
+          hasSubmissions: item._count.submissions > 0,
+        })),
+      ),
       profiles,
+      categories,
       form,
       bodyJson,
       columnMappingJson,
       startRow,
+      q,
       flash,
       error,
       editing: Boolean(editId),
@@ -354,6 +408,64 @@ export class AdminController {
     return res.redirect(`/spadmin/forms?edit=${encodeURIComponent(id)}`);
   }
 
+  @Post('forms/categories')
+  @UseGuards(AdminTokenGuard)
+  async createFormCategory(@Body('name') name: string, @Res() res: Response) {
+    try {
+      await this.categories.create(name);
+      return res.redirect(
+        '/spadmin/forms?flash=' + encodeURIComponent('دسته بندی ایجاد شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Category creation failed';
+      return res.redirect(
+        `/spadmin/forms?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('forms/categories/:id')
+  @UseGuards(AdminTokenGuard)
+  async updateFormCategory(
+    @Param('id') id: string,
+    @Body('name') name: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.categories.update(id, name);
+      return res.redirect(
+        '/spadmin/forms?flash=' + encodeURIComponent('دسته بندی ویرایش شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'ویرایش دسته بندی با خطا مواجه شد';
+      return res.redirect(
+        `/spadmin/forms?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('forms/categories/:id/delete')
+  @UseGuards(AdminTokenGuard)
+  async deleteFormCategory(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.categories.delete(id);
+      return res.redirect(
+        '/spadmin/forms?flash=' +
+          encodeURIComponent(
+            'دسته بندی حذف شد و آیتم‌های مربوطه به بدون دسته بندی منتقل شدند',
+          ),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'حذف دسته بندی با خطا مواجه شد';
+      return res.redirect(
+        `/spadmin/forms?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
   @Post('forms')
   @UseGuards(AdminTokenGuard)
   async createForm(@Body() body: Record<string, string>, @Res() res: Response) {
@@ -364,6 +476,7 @@ export class AdminController {
         : null;
       await this.forms.create({
         title: body.title,
+        categoryId: body.categoryId || null,
         key: body.key,
         slug: body.slug,
         body: fields,
@@ -387,9 +500,9 @@ export class AdminController {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Save failed';
-      return res.status(400).redirect(
-        `/spadmin/forms?new=1&error=${encodeURIComponent(message)}`,
-      );
+      return res
+        .status(400)
+        .redirect(`/spadmin/forms?new=1&error=${encodeURIComponent(message)}`);
     }
   }
 
@@ -407,6 +520,7 @@ export class AdminController {
         : null;
       await this.forms.update(id, {
         title: body.title,
+        categoryId: body.categoryId || null,
         slug: body.slug,
         body: fields,
         webhookUrl: body.webhookUrl || null,
@@ -429,9 +543,11 @@ export class AdminController {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Update failed';
-      return res.status(400).redirect(
-        `/spadmin/forms?edit=${encodeURIComponent(id)}&error=${encodeURIComponent(message)}`,
-      );
+      return res
+        .status(400)
+        .redirect(
+          `/spadmin/forms?edit=${encodeURIComponent(id)}&error=${encodeURIComponent(message)}`,
+        );
     }
   }
 
@@ -439,16 +555,21 @@ export class AdminController {
   @UseGuards(AdminTokenGuard)
   @Render('admin/landings')
   async landingsPage(
+    @Query('q') q?: string,
     @Query('previewId') previewId?: string,
     @Query('slug') slug?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('checksum') checksum?: string,
     @Query('previewUrl') previewUrl?: string,
     @Query('flash') flash?: string,
     @Query('error') error?: string,
     @Query('operation') operation?: string,
   ) {
-    const rawLandings = await this.deployment.listLandings();
-    const pendingSyncCount = await this.outbox.getMasterPendingSyncCount();
+    const [rawLandings, pendingSyncCount, categories] = await Promise.all([
+      this.deployment.listLandings(q),
+      this.outbox.getMasterPendingSyncCount(),
+      this.categories.list(),
+    ]);
 
     const landings = rawLandings.map((l) => {
       const d = new Date(l.updatedAt);
@@ -477,9 +598,13 @@ export class AdminController {
       title: 'مدیریت لندینگ‌ها',
       active: 'landings',
       landings,
+      landingGroups: this.groupByCategory(landings),
       pendingSyncCount,
       previewId,
       slug,
+      categoryId,
+      categories,
+      q,
       checksum,
       previewUrl,
       flash,
@@ -492,6 +617,67 @@ export class AdminController {
   @UseGuards(AdminTokenGuard)
   getSyncOperation(@Param('id') id: string) {
     return this.deployment.getSyncOperationStatus(id);
+  }
+
+  @Post('landings/categories')
+  @UseGuards(AdminTokenGuard)
+  async createLandingCategory(
+    @Body('name') name: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.categories.create(name);
+      return res.redirect(
+        '/spadmin/landings?flash=' + encodeURIComponent('دسته بندی ایجاد شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Category creation failed';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('landings/categories/:id')
+  @UseGuards(AdminTokenGuard)
+  async updateLandingCategory(
+    @Param('id') id: string,
+    @Body('name') name: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.categories.update(id, name);
+      return res.redirect(
+        '/spadmin/landings?flash=' + encodeURIComponent('دسته بندی ویرایش شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'ویرایش دسته بندی با خطا مواجه شد';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('landings/categories/:id/delete')
+  @UseGuards(AdminTokenGuard)
+  async deleteLandingCategory(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.categories.delete(id);
+      return res.redirect(
+        '/spadmin/landings?flash=' +
+          encodeURIComponent(
+            'دسته بندی حذف شد و لندینگ‌های مربوطه به بدون دسته بندی منتقل شدند',
+          ),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'حذف دسته بندی با خطا مواجه شد';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
   }
 
   @Post('landings/upload')
@@ -514,6 +700,7 @@ export class AdminController {
   async uploadLanding(
     @UploadedFile() file: Express.Multer.File,
     @Body('slug') slug: string,
+    @Body('categoryId') categoryId: string,
     @Res() res: Response,
   ) {
     try {
@@ -522,6 +709,7 @@ export class AdminController {
       const q = new URLSearchParams({
         previewId: result.previewId,
         slug: result.slug,
+        categoryId: categoryId || '',
         checksum: result.checksum,
         previewUrl: result.previewUrl,
       });
@@ -538,11 +726,15 @@ export class AdminController {
   @Post('landings/confirm')
   @UseGuards(AdminTokenGuard)
   async confirmLanding(
-    @Body() body: { previewId: string; slug: string },
+    @Body() body: { previewId: string; slug: string; categoryId?: string },
     @Res() res: Response,
   ) {
     try {
-      const landing = await this.deployment.confirm(body.previewId, body.slug);
+      const landing = await this.deployment.confirm(
+        body.previewId,
+        body.slug,
+        body.categoryId,
+      );
       const operation = await this.deployment.trackSyncOperation([body.slug]);
       return res.redirect(
         `/spadmin/landings?operation=${encodeURIComponent(operation.id)}`,
@@ -593,6 +785,50 @@ export class AdminController {
     }
   }
 
+  @Post('landings/:slug/category')
+  @UseGuards(AdminTokenGuard)
+  async reassignLandingCategory(
+    @Param('slug') slug: string,
+    @Body('categoryId') categoryId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.deployment.reassignCategory(slug, categoryId || null);
+      return res.redirect(
+        '/spadmin/landings?flash=' +
+          encodeURIComponent('دسته بندی لندینگ به روز شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Category update failed';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
+  @Post('landings/:slug')
+  @UseGuards(AdminTokenGuard)
+  async updateLanding(
+    @Param('slug') slug: string,
+    @Body('categoryId') categoryId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.deployment.updateLandingCategory(slug, categoryId || null);
+      return res.redirect(
+        '/spadmin/landings?flash=' +
+          encodeURIComponent('دسته بندی لندینگ به روز شد'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'ویرایش لندینگ ناموفق بود';
+      return res.redirect(
+        `/spadmin/landings?error=${encodeURIComponent(message)}`,
+      );
+    }
+  }
+
   @Post('landings/delete/:slug')
   @UseGuards(AdminTokenGuard)
   async deleteLanding(@Param('slug') slug: string, @Res() res: Response) {
@@ -635,6 +871,7 @@ export class AdminController {
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body('slug') slug: string,
+    @Body('categoryId') categoryId: string,
     @Res() res: Response,
   ) {
     try {
@@ -643,6 +880,7 @@ export class AdminController {
       const q = new URLSearchParams({
         previewId: result.previewId,
         slug: result.slug,
+        categoryId: categoryId || '',
         checksum: result.checksum,
         previewUrl: result.previewUrl,
       });
@@ -658,11 +896,11 @@ export class AdminController {
   @Post('deploy/confirm')
   @UseGuards(AdminTokenGuard)
   async confirm(
-    @Body() body: { previewId: string; slug: string },
+    @Body() body: { previewId: string; slug: string; categoryId?: string },
     @Res() res: Response,
   ) {
     try {
-      await this.deployment.confirm(body.previewId, body.slug);
+      await this.deployment.confirm(body.previewId, body.slug, body.categoryId);
       return res.redirect(
         `/spadmin/landings?flash=${encodeURIComponent('لندینگ مستقر و در صف همگام‌سازی قرار گرفت')}`,
       );
@@ -906,17 +1144,26 @@ export class AdminController {
         nodeTitle: s.edgeNode ? s.edgeNode.title : 'سرور Master (لوکال)',
         otpStatus: otpLabel,
         jalaliDate: formatJalaliDateTime(s.createdAt),
-        createdAt: new Date(s.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+        createdAt: new Date(s.createdAt)
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 19),
       };
 
       payloadKeys.forEach((key) => {
         const val = payloadObj[key];
-        rowData[`payload_${key}`] = val !== undefined && val !== null ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : '';
+        rowData[`payload_${key}`] =
+          val !== undefined && val !== null
+            ? typeof val === 'object'
+              ? JSON.stringify(val)
+              : String(val)
+            : '';
       });
 
       utmKeys.forEach((key) => {
         const val = payloadObj[key];
-        rowData[`utm_${key}`] = val !== undefined && val !== null ? String(val) : '';
+        rowData[`utm_${key}`] =
+          val !== undefined && val !== null ? String(val) : '';
       });
 
       return rowData;
@@ -1011,15 +1258,27 @@ export class AdminController {
       requestUrl: item.requestUrl,
       status: item.success ? 'موفق' : 'ناموفق',
       responseStatus: item.responseStatus ? String(item.responseStatus) : '—',
-      durationMs: item.durationMs !== null && item.durationMs !== undefined ? item.durationMs : '—',
+      durationMs:
+        item.durationMs !== null && item.durationMs !== undefined
+          ? item.durationMs
+          : '—',
       error: item.error || '—',
       responseBody: item.responseBody || '—',
-      responseHeaders: item.responseHeaders ? JSON.stringify(item.responseHeaders) : '—',
+      responseHeaders: item.responseHeaders
+        ? JSON.stringify(item.responseHeaders)
+        : '—',
       jalaliDate: formatJalaliDateTime(item.createdAt),
-      createdAt: new Date(item.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+      createdAt: new Date(item.createdAt)
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19),
     }));
 
-    const buffer = await createExcelWorkbook('WebhookInvocations', columns, rows);
+    const buffer = await createExcelWorkbook(
+      'WebhookInvocations',
+      columns,
+      rows,
+    );
     const fileName = `webhook_invocations_${Date.now()}.xlsx`;
 
     res.setHeader(
@@ -1105,12 +1364,20 @@ export class AdminController {
         lastError: s.webhookLastError || '—',
         jalaliDate: formatJalaliDateTime(s.createdAt),
         updatedAtFa: formatJalaliDateTime(s.updatedAt),
-        createdAt: new Date(s.createdAt).toISOString().replace('T', ' ').substring(0, 19),
+        createdAt: new Date(s.createdAt)
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 19),
       };
 
       payloadKeys.forEach((key) => {
         const val = payloadObj[key];
-        rowData[`payload_${key}`] = val !== undefined && val !== null ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : '';
+        rowData[`payload_${key}`] =
+          val !== undefined && val !== null
+            ? typeof val === 'object'
+              ? JSON.stringify(val)
+              : String(val)
+            : '';
       });
 
       return rowData;

@@ -1,11 +1,13 @@
 import * as ExcelJS from 'exceljs';
 import 'jdate.js';
 
-export function formatJalaliDateTime(date: Date | string | null | undefined): string {
+export function formatJalaliDateTime(
+  date: Date | string | null | undefined,
+): string {
   if (!date) return '—';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '—';
-  
+
   if (typeof (d as any).jalaliSync === 'function') {
     (d as any).jalaliSync();
   }
@@ -18,7 +20,11 @@ export function formatJalaliDateTime(date: Date | string | null | undefined): st
 
   // در صورت عدم دسترسی به jalaliSync از تبدیل دستی Date.gregorianToJalali استفاده می‌شود
   if (typeof (Date as any).gregorianToJalali === 'function') {
-    const gj = (Date as any).gregorianToJalali(d.getFullYear(), d.getMonth(), d.getDate());
+    const gj = (Date as any).gregorianToJalali(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+    );
     const month = gj.month + 1;
     return `${gj.year}/${String(month).padStart(2, '0')}/${String(gj.date).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
   }
@@ -59,7 +65,12 @@ export async function createExcelWorkbook(
   // استایل‌دهی ردیف هدر
   const headerRow = worksheet.getRow(1);
   headerRow.height = 28;
-  headerRow.font = { name: 'Tahoma', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.font = {
+    name: 'Tahoma',
+    size: 11,
+    bold: true,
+    color: { argb: 'FFFFFFFF' },
+  };
   headerRow.fill = {
     type: 'pattern',
     pattern: 'solid',

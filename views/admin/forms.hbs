@@ -13,12 +13,50 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
       <span>مدیریت پروفایل‌ها</span>
     </a>
+    <button type="button" class="btn btn-secondary" id="btn-open-form-category-dialog" style="display: inline-flex; align-items: center; gap: 0.4rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.9rem;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg>
+      <span>ایجاد دسته بندی</span>
+    </button>
     <button type="button" class="btn btn-primary" id="btn-toggle-form-editor">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span>افزودن فرم جدید</span>
     </button>
   </div>
 </header>
+
+<dialog id="form-category-dialog" class="category-dialog">
+  <form method="post" action="/spadmin/forms/categories" style="padding: 1.5rem;">
+    <div class="section-header" style="margin-bottom: 1rem;">
+      <span>ایجاد دسته بندی جدید</span>
+      <button type="button" class="btn btn-subtle btn-sm" data-close-category-dialog>بستن</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="form-category-name">نام دسته بندی</label>
+      <input class="form-control" id="form-category-name" name="name" required autofocus placeholder="مثلاً: کمپین تابستان" />
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-secondary" data-close-category-dialog>انصراف</button>
+      <button type="submit" class="btn btn-primary">ایجاد دسته بندی</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="form-edit-category-dialog" class="category-dialog">
+  <form method="post" id="form-edit-category-form" action="" style="padding: 1.5rem;">
+    <div class="section-header" style="margin-bottom: 1rem;">
+      <span>ویرایش دسته بندی</span>
+      <button type="button" class="btn btn-subtle btn-sm" data-close-category-dialog>بستن</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="form-edit-category-name">نام دسته بندی</label>
+      <input class="form-control" id="form-edit-category-name" name="name" required autofocus placeholder="مثلاً: کمپین تابستان" />
+    </div>
+    <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <button type="button" class="btn btn-secondary" data-close-category-dialog>انصراف</button>
+      <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
+    </div>
+  </form>
+</dialog>
 
 {{#if error}}
   <div class="alert alert-error"><span>{{error}}</span></div>
@@ -32,50 +70,103 @@
 </div>
 
 <div class="content-wrapper">
-  <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+  <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
     <div>
       <span>لیست فرم‌ها</span>
       <span class="status-pill">{{forms.length}} فرم</span>
     </div>
+    <form method="get" action="/spadmin/forms" style="display: flex; gap: 0.5rem; align-items: center;">
+      <input class="form-control" type="search" name="q" value="{{q}}" placeholder="جستجو در عنوان، دسته‌بندی یا کلید" style="min-width: 250px;" />
+      <button type="submit" class="btn btn-secondary">جستجو</button>
+      {{#if q}}<a href="/spadmin/forms" class="btn btn-subtle">پاک کردن</a>{{/if}}
+    </form>
   </div>
-  <div class="table-responsive">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>عنوان فرم</th>
-          <th>کلید یکتا</th>
-          <th>فیلدها</th>
-          <th>وضعیت</th>
-          <th>لیدهای دریافت‌شده</th>
-          <th class="actions">عملیات</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#each forms}}
+  <p style="color: var(--text-muted); margin: 0;">فرم‌ها بر اساس دسته بندی نمایش داده می‌شوند.</p>
+  {{#each formGroups}}
+  <section class="content-wrapper category-card" style="margin-top: 1.5rem;">
+    <div class="section-header">
+      <div class="category-header">
+        <div class="category-header-title">
+          <span>{{name}}</span>
+          <span class="status-pill">{{items.length}} فرم</span>
+        </div>
+        {{#unless (eq name 'بدون دسته بندی')}}
+        <div class="category-hover-actions">
+          <button type="button" class="category-action-btn btn-edit" data-edit-category-id="{{items.[0].category.id}}" data-edit-category-name="{{name}}" title="ویرایش نام دسته‌بندی">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>ویرایش</span>
+          </button>
+          <form method="post" action="/spadmin/forms/categories/{{items.[0].category.id}}/delete" style="display: inline; margin: 0;" onsubmit="return confirm('آیا از حذف دسته‌بندی «{{name}}» اطمینان دارید؟ با حذف، فرم‌های این دسته‌بندی به حالت بدون دسته‌بندی منتقل می‌شوند.');">
+            <button type="submit" class="category-action-btn btn-delete" title="حذف دسته‌بندی">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              <span>حذف</span>
+            </button>
+          </form>
+        </div>
+        {{/unless}}
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead><tr><th>عنوان فرم</th><th>کلید یکتا</th><th>فیلدها</th><th>لیدها</th><th class="actions">عملیات</th></tr></thead>
+        <tbody>
+          {{#each items}}
           <tr>
             <td style="font-weight: 600;">{{title}}<div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">/{{slug}}</div></td>
             <td><code>{{key}}</code></td>
             <td><span class="status-pill">{{fieldCount}} فیلد</span></td>
-            <td>
-              {{#if hasSubmissions}}
-                <span class="status-pill status-ok">دریافت لید</span>
-              {{else}}
-                <span class="status-pill">بدون لید</span>
-              {{/if}}
-            </td>
             <td><a href="/spadmin/submissions?formId={{id}}" class="btn-subtle">{{submissionCount}} لید</a></td>
-            <td class="actions"><a href="/spadmin/forms?edit={{id}}" class="btn-subtle">ویرایش</a></td>
+            <td class="actions"><a href="/spadmin/forms?edit={{id}}{{#if ../../q}}&q={{../../q}}{{/if}}" class="btn-subtle">ویرایش</a></td>
           </tr>
-        {{else}}
-          <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">هنوز فرمی در سیستم ثبت نشده است.</td></tr>
-        {{/each}}
-      </tbody>
-    </table>
-  </div>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{/each}}
 </div>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    const categoryDialog = document.getElementById('form-category-dialog');
+    const openCategoryDialog = document.getElementById('btn-open-form-category-dialog');
+    if (categoryDialog && openCategoryDialog) {
+      openCategoryDialog.addEventListener('click', function () {
+        categoryDialog.showModal();
+      });
+    }
+
+    const editCategoryDialog = document.getElementById('form-edit-category-dialog');
+    const editCategoryForm = document.getElementById('form-edit-category-form');
+    const editCategoryName = document.getElementById('form-edit-category-name');
+
+    document.querySelectorAll('.btn-edit[data-edit-category-id]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const id = this.getAttribute('data-edit-category-id');
+        const name = this.getAttribute('data-edit-category-name');
+        if (editCategoryDialog && editCategoryForm && editCategoryName) {
+          editCategoryForm.action = '/spadmin/forms/categories/' + encodeURIComponent(id);
+          editCategoryName.value = name;
+          editCategoryDialog.showModal();
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-close-category-dialog]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        if (categoryDialog && categoryDialog.open) categoryDialog.close();
+        if (editCategoryDialog && editCategoryDialog.open) editCategoryDialog.close();
+      });
+    });
+
+    [categoryDialog, editCategoryDialog].forEach(function (dialog) {
+      if (dialog) {
+        dialog.addEventListener('click', function (event) {
+          if (event.target === dialog) dialog.close();
+        });
+      }
+    });
+
     const toggle = document.getElementById('btn-toggle-form-editor');
     const section = document.getElementById('form-editor-section');
     if (toggle && section) {

@@ -89,6 +89,7 @@ export class IntegrationProfileService {
       // بازیابی مجدد فرم‌های آپدیت شده برای ارسال به Outbox
       const updatedForms = await this.prisma.form.findMany({
         where: { profileId: id },
+        include: { category: true },
       });
       for (const form of updatedForms) {
         await this.outbox.enqueueFormSync({
@@ -98,6 +99,7 @@ export class IntegrationProfileService {
           form: {
             id: form.id,
             title: form.title,
+            category: form.category?.name || null,
             key: form.key,
             slug: form.slug,
             body: form.body,

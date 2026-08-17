@@ -35,7 +35,8 @@ export class HealthController {
       try {
         const { readdirSync, existsSync, readFileSync } = await import('fs');
         const { join } = await import('path');
-        const staticPagesPath = process.env.STATIC_PAGES_PATH || join(process.cwd(), 'static_pages');
+        const staticPagesPath =
+          process.env.STATIC_PAGES_PATH || join(process.cwd(), 'static_pages');
 
         if (existsSync(staticPagesPath)) {
           const dirs = readdirSync(staticPagesPath, { withFileTypes: true })

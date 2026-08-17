@@ -130,11 +130,28 @@ export class SyncConsumerController {
       if (payload.action === 'delete') {
         await this.prisma.form.deleteMany({ where: { key: payload.key } });
       } else if (payload.form) {
+        const categoryId = payload.form.category
+          ? (
+              await this.prisma.category.upsert({
+                where: {
+                  normalizedName:
+                    payload.form.category.toLocaleLowerCase('fa-IR'),
+                },
+                create: {
+                  name: payload.form.category,
+                  normalizedName:
+                    payload.form.category.toLocaleLowerCase('fa-IR'),
+                },
+                update: {},
+              })
+            ).id
+          : null;
         await this.prisma.form.upsert({
           where: { key: payload.form.key },
           create: {
             id: payload.form.id,
             title: payload.form.title,
+            categoryId,
             key: payload.form.key,
             slug: payload.form.slug,
             body: payload.form.body as Prisma.InputJsonValue,
@@ -152,6 +169,9 @@ export class SyncConsumerController {
           },
           update: {
             title: payload.form.title,
+            ...(Object.prototype.hasOwnProperty.call(payload.form, 'category')
+              ? { categoryId }
+              : {}),
             slug: payload.form.slug,
             body: payload.form.body as Prisma.InputJsonValue,
             webhookUrl: payload.form.webhookUrl || null,
@@ -268,7 +288,8 @@ export class SyncConsumerController {
       const existing = await this.prisma.formSubmission.findUnique({
         where: { id: payloadRaw.submissionId },
       });
-      const isNewer = !existing || payloadRaw.syncVersion > existing.syncVersion;
+      const isNewer =
+        !existing || payloadRaw.syncVersion > existing.syncVersion;
 
       if (isNewer) {
         await this.prisma.formSubmission.upsert({

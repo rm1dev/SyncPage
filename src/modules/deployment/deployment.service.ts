@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { FileService } from './file.service';
 import { NodesService } from '../nodes/nodes.service';
+import { CategoryService } from '../categories/category.service';
 
 @Injectable()
 export class DeploymentService implements OnModuleInit {
@@ -20,14 +21,29 @@ export class DeploymentService implements OnModuleInit {
     private readonly files: FileService,
     private readonly config: ConfigService,
     private readonly nodesService: NodesService,
+    private readonly categories: CategoryService,
   ) {}
 
   onModuleInit() {
     this.files.ensureDirs();
   }
 
-  listLandings() {
-    return this.prisma.landing.findMany({ orderBy: { updatedAt: 'desc' } });
+  listLandings(q?: string) {
+    const query = q?.trim();
+    const where: Prisma.LandingWhereInput | undefined = query
+      ? {
+          OR: [
+            { slug: { contains: query, mode: 'insensitive' } },
+            { category: { name: { contains: query, mode: 'insensitive' } } },
+          ],
+        }
+      : undefined;
+
+    return this.prisma.landing.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: { category: true },
+    });
   }
 
   async uploadPreview(slug: string, zipPath: string) {
@@ -69,7 +85,8 @@ export class DeploymentService implements OnModuleInit {
     };
   }
 
-  async confirm(previewId: string, slug: string) {
+  async confirm(previewId: string, slug: string, categoryId?: string | null) {
+    const category = await this.categories.requireById(categoryId);
     const previewDir = join(this.files.tempRoot, 'preview', previewId);
     const storedZip = join(this.files.tempRoot, 'packages', `${previewId}.zip`);
 
@@ -129,11 +146,13 @@ export class DeploymentService implements OnModuleInit {
           slug,
           version,
           checksum,
+          categoryId: category?.id || null,
           status: 'ACTIVE',
         },
         update: {
           version,
           checksum,
+          categoryId: category?.id || null,
           status: 'ACTIVE',
         },
       });
@@ -148,6 +167,7 @@ export class DeploymentService implements OnModuleInit {
             slug,
             version,
             checksum,
+            category: category?.name || null,
             // Edge اول از IP داخلی Master دانلود می‌کنه؛ اگه نشد public رو هم امتحان می‌کنه
             downloadUrl: `${masterUrl}${packagePath}`,
             ...(publicBase
@@ -172,6 +192,25 @@ export class DeploymentService implements OnModuleInit {
     return landing;
   }
 
+  async updateLandingCategory(slug: string, categoryId?: string | null) {
+    const category = await this.categories.requireById(categoryId);
+    const existing = await this.prisma.landing.findUnique({ where: { slug } });
+    if (!existing) throw new NotFoundException('لندینگ یافت نشد');
+
+    return this.prisma.landing.update({
+      where: { id: existing.id },
+      data: { categoryId: category?.id || null },
+    });
+  }
+
+  async reassignCategory(slug: string, categoryId?: string | null) {
+    const category = await this.categories.requireById(categoryId);
+    return this.prisma.landing.update({
+      where: { slug },
+      data: { categoryId: category?.id || null },
+    });
+  }
+
   async syncSingle(slug: string) {
     const operation = await this.createSyncOperation([slug]);
     await this.syncSingleForOperation(slug, operation.id);
@@ -179,7 +218,9 @@ export class DeploymentService implements OnModuleInit {
   }
 
   private async syncSingleForOperation(slug: string, operationId: string) {
-    const landing = await this.prisma.landing.findUnique({ where: { slug } });
+    const landing = await this.prisma.landing.findUnique({
+      where: { slug },
+    });
     if (!landing) throw new NotFoundException('لندینگ یافت نشد');
 
     const version = landing.version + 1;
@@ -231,7 +272,9 @@ export class DeploymentService implements OnModuleInit {
     const landings = (await this.listLandings()).filter(
       (landing) => landing.status === 'ACTIVE',
     );
-    const operation = await this.createSyncOperation(landings.map((l) => l.slug));
+    const operation = await this.createSyncOperation(
+      landings.map((l) => l.slug),
+    );
     for (const landing of landings) {
       await this.syncSingleForOperation(landing.slug, operation.id);
     }
@@ -256,7 +299,9 @@ export class DeploymentService implements OnModuleInit {
   async getSyncOperationStatus(operationId: string) {
     const operation = await this.prisma.syncOperation.findUnique({
       where: { id: operationId },
-      include: { nodes: { include: { node: true }, orderBy: { node: { title: 'asc' } } } },
+      include: {
+        nodes: { include: { node: true }, orderBy: { node: { title: 'asc' } } },
+      },
     });
     if (!operation) throw new NotFoundException('عملیات همگام‌سازی پیدا نشد');
 
@@ -264,27 +309,76 @@ export class DeploymentService implements OnModuleInit {
       where: { slug: { in: operation.landingSlugs as string[] } },
       select: { slug: true, version: true, checksum: true },
     });
-    const nodes = await Promise.all(operation.nodes.map(async (entry) => {
-      const probe = await this.nodesService.probeHealth(entry.nodeId);
-      const active = probe?.activeDownload;
-      const isComplete = !!probe?.ok && expected.every((landing) =>
-        (probe.edgeLandings || []).some((edge: any) => edge.slug === landing.slug && edge.version === landing.version && edge.checksum === landing.checksum),
-      );
-      const status = isComplete ? 'COMPLETED' : !probe?.ok ? 'UNREACHABLE' : active ? 'DEPLOYING' : entry.status;
-      const lastError = !probe?.ok ? 'نود از طریق health در دسترس نیست' : null;
-      if (status !== entry.status || lastError !== entry.lastError) {
-        await this.prisma.syncOperationNode.update({
-          where: { operationId_nodeId: { operationId, nodeId: entry.nodeId } },
-          data: { status, lastError, ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}) },
-        });
-      }
-      return { id: entry.nodeId, title: entry.node.title, status, lastError, activeDownload: active || null, rabbitStatus: probe?.rabbitmq?.ok ? 'ONLINE' : 'OFFLINE' };
-    }));
-    const completed = nodes.filter((node) => node.status === 'COMPLETED').length;
-    const failed = nodes.filter((node) => node.status === 'FAILED' || node.status === 'UNREACHABLE').length;
-    const status = completed === nodes.length ? 'COMPLETED' : completed || failed ? 'PARTIAL' : 'RUNNING';
-    if (status !== operation.status) await this.prisma.syncOperation.update({ where: { id: operationId }, data: { status } });
-    return { id: operationId, status, landings: expected, nodes, createdAt: operation.createdAt };
+    const nodes = await Promise.all(
+      operation.nodes.map(async (entry) => {
+        const probe = await this.nodesService.probeHealth(entry.nodeId);
+        const active = probe?.activeDownload;
+        const isComplete =
+          !!probe?.ok &&
+          expected.every((landing) =>
+            (probe.edgeLandings || []).some(
+              (edge: any) =>
+                edge.slug === landing.slug &&
+                edge.version === landing.version &&
+                edge.checksum === landing.checksum,
+            ),
+          );
+        const status = isComplete
+          ? 'COMPLETED'
+          : !probe?.ok
+            ? 'UNREACHABLE'
+            : active
+              ? 'DEPLOYING'
+              : entry.status;
+        const lastError = !probe?.ok
+          ? 'نود از طریق health در دسترس نیست'
+          : null;
+        if (status !== entry.status || lastError !== entry.lastError) {
+          await this.prisma.syncOperationNode.update({
+            where: {
+              operationId_nodeId: { operationId, nodeId: entry.nodeId },
+            },
+            data: {
+              status,
+              lastError,
+              ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
+            },
+          });
+        }
+        return {
+          id: entry.nodeId,
+          title: entry.node.title,
+          status,
+          lastError,
+          activeDownload: active || null,
+          rabbitStatus: probe?.rabbitmq?.ok ? 'ONLINE' : 'OFFLINE',
+        };
+      }),
+    );
+    const completed = nodes.filter(
+      (node) => node.status === 'COMPLETED',
+    ).length;
+    const failed = nodes.filter(
+      (node) => node.status === 'FAILED' || node.status === 'UNREACHABLE',
+    ).length;
+    const status =
+      completed === nodes.length
+        ? 'COMPLETED'
+        : completed || failed
+          ? 'PARTIAL'
+          : 'RUNNING';
+    if (status !== operation.status)
+      await this.prisma.syncOperation.update({
+        where: { id: operationId },
+        data: { status },
+      });
+    return {
+      id: operationId,
+      status,
+      landings: expected,
+      nodes,
+      createdAt: operation.createdAt,
+    };
   }
 
   async deleteLanding(slug: string) {
@@ -374,6 +468,7 @@ export class DeploymentService implements OnModuleInit {
     // فرم‌ها هم توی مانیفست — Edge بدون AMQP تعریف فرم رو از همین‌جا می‌گیره
     const forms = await this.prisma.form.findMany({
       orderBy: { updatedAt: 'desc' },
+      include: { category: true },
     });
 
     const settings = await this.prisma.systemSetting.findMany();
@@ -383,8 +478,7 @@ export class DeploymentService implements OnModuleInit {
         slug: row.slug,
         version: row.version,
         checksum: row.checksum,
-        // آپدیت اینجا: حتما باید بر اساس updatedAt تایم استمپ بزنیم که اگه تغییر کرد مانیفست تغییر کنه
-        idempotencyKey: `landing:${row.slug}:v${row.version}:${row.checksum}:${row.updatedAt.getTime()}`,
+        idempotencyKey: `landing:${row.slug}:v${row.version}:${row.checksum}`,
         downloadUrl: `${masterUrl}${packagePath(row.slug, row.version, row.checksum)}`,
         ...(publicBase
           ? {
@@ -395,6 +489,7 @@ export class DeploymentService implements OnModuleInit {
       forms: forms.map((f) => ({
         id: f.id,
         title: f.title,
+        category: f.category?.name || null,
         key: f.key,
         slug: f.slug,
         body: f.body,

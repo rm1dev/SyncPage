@@ -4,9 +4,10 @@ import { LandingFilesController } from './landing-files.controller';
 import { DeploymentService } from './deployment.service';
 import { NodesModule } from '../nodes/nodes.module';
 import { FileService } from './file.service';
+import { CategoryModule } from '../categories/category.module';
 
 @Module({
-  imports: [NodesModule],
+  imports: [NodesModule, CategoryModule],
   controllers: [DeploymentController, LandingFilesController],
   providers: [DeploymentService, FileService],
   exports: [DeploymentService, FileService],
