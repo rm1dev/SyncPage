@@ -224,6 +224,9 @@ export class FormEngineService {
       const created = await tx.formSubmission.create({
         data: {
           formId: form.id,
+          // edgeNodeId will be null if it doesn't match an existing foreign key in some cases,
+          // but since Prisma requires it to match, and we might not have it strictly synced if self-referenced,
+          // we use edgeNodeId directly. We already fixed the DB side.
           edgeNodeId,
           payload: safePayload as Prisma.InputJsonValue,
           otpStatus: 'UNVERIFIED',
