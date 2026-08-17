@@ -48,6 +48,17 @@ export class SyncConsumerController {
         channel.ack(originalMsg);
         return;
       }
+      
+      // Additional safety check to prevent infinite loops from same message
+      const ackKey = `sync-ack-${payload.idempotencyKey}`;
+      const globalAny = global as any;
+      globalAny[ackKey] = (globalAny[ackKey] || 0) + 1;
+      if (globalAny[ackKey] > 5) {
+        this.logger.error(`Too many failures for ${payload.idempotencyKey}. Dropping message to prevent infinite loop.`);
+        await this.landingApply.markProcessed(payload.idempotencyKey);
+        channel.ack(originalMsg);
+        return;
+      }
 
       await this.landingApply.applyLanding(payload);
       await this.landingApply.markProcessed(payload.idempotencyKey);
@@ -348,11 +359,19 @@ export class SyncConsumerController {
     err: unknown,
     channel: {
       nack: (msg: unknown, allUpTo: boolean, requeue: boolean) => void;
+      ack: (msg: unknown) => void;
     },
     originalMsg: unknown,
   ) {
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`Sync failed: ${message}`);
-    channel.nack(originalMsg, false, true);
+    
+    // Check if it's a checksum mismatch or another non-recoverable error
+    if (message.includes('Checksum mismatch')) {
+       this.logger.error(`Non-recoverable error: dropping message.`);
+       channel.ack(originalMsg);
+    } else {
+       channel.nack(originalMsg, false, true);
+    }
   }
 }

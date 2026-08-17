@@ -84,11 +84,15 @@ export class LandingApplyService {
 
   async applyLanding(payload: LandingSyncPayload) {
     this.files.ensureDirs();
+    // Make sure we purge out old packages locally.
     const zipPath = join(
       this.files.tempRoot,
       'packages',
       `edge-${payload.slug}-${payload.version}.zip`,
     );
+    if (existsSync(zipPath)) {
+      rmSync(zipPath, { force: true });
+    }
     const extractDir = join(
       this.files.tempRoot,
       'preview',
@@ -236,7 +240,15 @@ export class LandingApplyService {
           const headers: Record<string, string> = {};
           if (downloaded > 0) headers.Range = `bytes=${downloaded}-`;
 
-          const response = await axios.get(url, {
+          // Check if payload has a downloadUrl
+          let downloadUrl = url;
+          if (downloadUrl.includes('?')) {
+             downloadUrl += '&bust=' + Date.now();
+          } else {
+             downloadUrl += '?bust=' + Date.now();
+          }
+
+          const response = await axios.get(downloadUrl, {
             responseType: 'stream',
             timeout: 120_000,
             maxRedirects: 5,
