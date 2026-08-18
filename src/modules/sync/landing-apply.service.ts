@@ -40,6 +40,9 @@ export class LandingApplyService {
   private downloadHistory: DownloadHistory[] = [];
   private readonly maxHistory = 10;
   
+  // 1.8 Lock per-slug
+  private readonly activeLocks = new Set<string>();
+  
   // برای جلوگیری از دانلود همزمان یک لندینگ
   private activeLocks = new Set<string>();
 
@@ -169,26 +172,37 @@ export class LandingApplyService {
     const startTime = Date.now();
 
     for (const url of candidates) {
-      try {
-        this.logger.log(`Downloading landing package: ${url}`);
-        await this.downloadFile(url, dest, payload);
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          this.logger.log(`Downloading landing package: ${url}`);
+          await this.downloadFile(url, dest, payload);
 
-        const durationSec = (Date.now() - startTime) / 1000;
-        const size = existsSync(dest) ? statSync(dest).size : 0;
+          const durationSec = (Date.now() - startTime) / 1000;
+          const size = existsSync(dest) ? statSync(dest).size : 0;
 
-        this.addHistory({
-          slug: payload.slug,
-          durationSec,
-          avgSpeed: this.formatSpeed(size / (durationSec || 1)),
-          status: 'SUCCESS',
-          timestamp: new Date().toISOString(),
-        });
+          this.addHistory({
+            slug: payload.slug,
+            durationSec,
+            avgSpeed: this.formatSpeed(size / (durationSec || 1)),
+            status: 'SUCCESS',
+            timestamp: new Date().toISOString(),
+          });
 
-        return;
-      } catch (err) {
-        lastErr = err;
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Download failed (${url}): ${message}`);
+          return;
+        } catch (err) {
+          lastErr = err;
+          attempts++;
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`Download failed (${url}) attempt ${attempts}: ${message}`);
+          
+          if (attempts < maxAttempts) {
+             const delay = Math.min(1000 * (2 ** attempts), 15000);
+             await new Promise(r => setTimeout(r, delay));
+          }
+        }
       }
     }
 

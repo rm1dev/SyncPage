@@ -218,6 +218,7 @@ model SyncOperationNode {
   @@index([operationId])
 }
 
+// برای ردیابی رکوردهای حذف‌شده در حالت HTTP Sync
 model SyncTombstone {
   id         String   @id @default(uuid())
   entityType String   // "LANDING" | "FORM" | "SETTING"
