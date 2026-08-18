@@ -47,7 +47,8 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     if (syncMode === 'http') {
       this.logger.log('Outbox: SYNC_MODE is http, skipping RabbitMQ connection');
     } else {
-      await this.connectWithRetry();
+      // Do not await connectWithRetry so that it doesn't block application startup
+      this.connectWithRetry().catch((err) => this.logger.error(err));
     }
     const pollMs = this.config.get<number>('outboxPollMs') || 3000;
     this.timer = setInterval(() => {
