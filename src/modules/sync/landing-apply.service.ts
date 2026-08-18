@@ -332,7 +332,19 @@ export class LandingApplyService {
             let lastSpeedCheck = Date.now();
             let bytesSinceLastCheck = 0;
 
+            let idleTimer: NodeJS.Timeout | null = null;
+            const resetIdleTimer = () => {
+              if (idleTimer) clearTimeout(idleTimer);
+              idleTimer = setTimeout(() => {
+                this.logger.warn(
+                  `Download stalled at byte ${downloaded}${total ? `/${total}` : ''}; closing stream for Range resume`,
+                );
+                response.data.destroy(new Error('Download idle timeout'));
+              }, 15_000);
+            };
+
             response.data.on('data', (chunk: Buffer) => {
+              resetIdleTimer();
               const now = Date.now();
               downloaded += chunk.length;
               bytesSinceLastCheck += chunk.length;
@@ -363,12 +375,17 @@ export class LandingApplyService {
               }
             });
 
-            await pipeline(
-              response.data,
-              createWriteStream(dest, {
-                flags: downloaded > 0 ? 'a' : 'w',
-              }),
-            );
+            resetIdleTimer();
+            try {
+              await pipeline(
+                response.data,
+                createWriteStream(dest, {
+                  flags: downloaded > 0 ? 'a' : 'w',
+                }),
+              );
+            } finally {
+              if (idleTimer) clearTimeout(idleTimer);
+            }
           } finally {
             downloaded = existsSync(dest) ? statSync(dest).size : 0;
           }
