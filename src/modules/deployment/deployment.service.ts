@@ -327,12 +327,14 @@ export class DeploymentService implements OnModuleInit {
           ? 'COMPLETED'
           : !probe?.ok
             ? 'UNREACHABLE'
-            : active
+            : (active || probe.pendingSubmissions > 0 || probe.syncPull?.enabled)
               ? 'DEPLOYING'
               : entry.status;
         const lastError = !probe?.ok
           ? 'نود از طریق health در دسترس نیست'
-          : null;
+          : isComplete 
+            ? null 
+            : 'در حال همگام‌سازی از طریق HTTP Pull';
         if (status !== entry.status || lastError !== entry.lastError) {
           await this.prisma.syncOperationNode.update({
             where: {

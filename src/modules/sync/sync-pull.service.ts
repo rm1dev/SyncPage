@@ -211,7 +211,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
 
           const response = await this.httpClient.get<Manifest>(reqUrl.toString(), {
             headers,
-            timeout: 15_000,
+            timeout: 120_000, // 120 ثانیه
             validateStatus: (s: number) => s === 200 || s === 304,
           });
           
