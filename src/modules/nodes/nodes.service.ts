@@ -251,7 +251,7 @@ export class NodesService {
     for (const url of this.healthUrls(node)) {
       try {
         const { data, status } = await axios.get(url, {
-          timeout: 4000,
+          timeout: 8000,
           validateStatus: () => true,
         });
         if (status === 200 && data?.ok) {

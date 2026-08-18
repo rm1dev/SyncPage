@@ -356,6 +356,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async syncOne(item: ManifestItem) {
+    // Force log to see what's happening
+    this.logger.log(`[DEBUG] Checking landing from manifest: ${item?.slug} (v${item?.version})`);
+    
     if (!item?.slug || !item?.checksum || !item?.downloadUrl) {
         this.logger.warn(`Invalid manifest item: ${JSON.stringify(item)}`);
         return;
@@ -364,13 +367,13 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     try {
        const already = await this.apply.alreadyProcessed(item.idempotencyKey);
        if (already) {
-           // this.logger.debug(`Skipping ${item.slug} because alreadyProcessed=true`);
+           this.logger.log(`[DEBUG] Skipping ${item.slug} v${item.version} - alreadyProcessed is TRUE for key ${item.idempotencyKey}`);
            return;
        }
        
        const local = await this.prisma.landing.findUnique({ where: { slug: item.slug } });
        if (local && local.checksum === item.checksum && local.version >= item.version) {
-         // this.logger.debug(`Skipping ${item.slug} because local version >= item.version`);
+         this.logger.log(`[DEBUG] Skipping ${item.slug} - local version (${local.version}) is up to date with manifest (${item.version})`);
          await this.apply.markProcessed(item.idempotencyKey);
          return;
        }
@@ -382,7 +385,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
        
     } catch (err) {
        const message = err instanceof Error ? err.message : String(err);
-       this.logger.error(`HTTP pull landing apply failed (${item.slug}): ${message}`);
+       this.logger.error(`HTTP pull landing apply failed (${item.slug} v${item.version}): ${message}`);
        // ETag should be reset so it retries later
        this.lastETag = null; 
     }
