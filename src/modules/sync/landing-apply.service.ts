@@ -230,7 +230,7 @@ export class LandingApplyService {
     const dir = join(dest, '..');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-    const maxResumes = parseInt(process.env.SYNC_DOWNLOAD_RESUMES || '30', 10);
+    const maxResumes = parseInt(process.env.SYNC_DOWNLOAD_RESUMES || '100', 10);
     // فایل ناقص از دور قبلِ همین URL به درد نمی‌خوره — تمیز شروع کن
     rmSync(dest, { force: true });
 
