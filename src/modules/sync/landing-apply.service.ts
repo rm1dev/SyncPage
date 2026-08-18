@@ -42,9 +42,6 @@ export class LandingApplyService {
   
   // 1.8 Lock per-slug
   private readonly activeLocks = new Set<string>();
-  
-  // برای جلوگیری از دانلود همزمان یک لندینگ
-  private activeLocks = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,

@@ -64,6 +64,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private running = false;
   private lastETag: string | null = null;
   private lastSyncTimestamp: string | null = null;
+  private syncStats = { success: 0, failed: 0, lastRun: null as string | null };
   
   private httpClient: AxiosInstance;
 
@@ -147,15 +148,23 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       if (isFullSync) {
         await this.cleanupDeletedLandings(manifest.landings ?? []);
       }
+      this.syncStats.success++;
+      this.syncStats.lastRun = new Date().toISOString();
       
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`HTTP sync pull failed: ${message}`);
+      this.syncStats.failed++;
+      this.syncStats.lastRun = new Date().toISOString();
       // 1.9 ETag Reset on error
       this.lastETag = null; 
     } finally {
       this.running = false;
     }
+  }
+
+  getStats() {
+    return this.syncStats;
   }
 
   private manifestUrls(): string[] {
