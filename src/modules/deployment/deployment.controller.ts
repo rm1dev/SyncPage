@@ -23,6 +23,7 @@ import { SyncAuthGuard } from '../../common/guards/sync-auth.guard';
 import { DeploymentService } from './deployment.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { gzipSync } from 'zlib';
 
 @Controller()
 export class DeploymentController {
@@ -126,7 +127,10 @@ export class DeploymentController {
 
     res.setHeader('ETag', etag);
     res.setHeader('Content-Type', 'application/json');
-    return res.status(200).send(manifestJson);
+    const compressed = gzipSync(Buffer.from(manifestJson));
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Content-Length', compressed.length);
+    return res.status(200).send(compressed);
   }
 
   @Post('api/internal/sync/manifest')
@@ -150,6 +154,9 @@ export class DeploymentController {
 
     res.setHeader('ETag', etag);
     res.setHeader('Content-Type', 'application/json');
-    return res.status(200).send(manifestJson);
+    const compressed = gzipSync(Buffer.from(manifestJson));
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Content-Length', compressed.length);
+    return res.status(200).send(compressed);
   }
 }
