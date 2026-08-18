@@ -354,23 +354,26 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async syncOne(item: ManifestItem) {
-    if (!item?.slug || !item?.checksum || !item?.downloadUrl) return;
+    if (!item?.slug || !item?.checksum || !item?.downloadUrl) {
+        this.logger.warn(`Invalid manifest item: ${JSON.stringify(item)}`);
+        return;
+    }
     
     try {
        const already = await this.apply.alreadyProcessed(item.idempotencyKey);
        if (already) {
-           this.logger.debug(`Skipping ${item.slug} because alreadyProcessed=true`);
+           // this.logger.debug(`Skipping ${item.slug} because alreadyProcessed=true`);
            return;
        }
        
        const local = await this.prisma.landing.findUnique({ where: { slug: item.slug } });
        if (local && local.checksum === item.checksum && local.version >= item.version) {
-         this.logger.debug(`Skipping ${item.slug} because local version >= item.version`);
+         // this.logger.debug(`Skipping ${item.slug} because local version >= item.version`);
          await this.apply.markProcessed(item.idempotencyKey);
          return;
        }
        
-       this.logger.log(`Will apply landing: ${item.slug} v${item.version}`);
+       this.logger.log(`Will apply landing: ${item.slug} v${item.version} (Local: v${local?.version || 'none'})`);
        await this.apply.applyLanding(item as LandingSyncPayload);
        await this.apply.markProcessed(item.idempotencyKey);
        this.logger.log(`Landing synced via HTTP pull: ${item.slug} v${item.version}`);
