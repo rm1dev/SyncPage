@@ -133,7 +133,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       }
       
       await this.syncForms(manifest.forms);
-      await this.processDeletions(manifest.deletedForms, manifest.deletedLandings);
+      await this.processDeletions(manifest.deletedForms || [], manifest.deletedLandings || []);
       
       // 1.6 Download Queue (Concurrent max 2)
       const maxConcurrent = this.config.get<number>('syncPullConcurrent') || 2;
@@ -348,14 +348,20 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     if (!item?.slug || !item?.checksum || !item?.downloadUrl) return;
     
     try {
-       if (await this.apply.alreadyProcessed(item.idempotencyKey)) return;
+       const already = await this.apply.alreadyProcessed(item.idempotencyKey);
+       if (already) {
+           this.logger.debug(`Skipping ${item.slug} because alreadyProcessed=true`);
+           return;
+       }
        
        const local = await this.prisma.landing.findUnique({ where: { slug: item.slug } });
        if (local && local.checksum === item.checksum && local.version >= item.version) {
+         this.logger.debug(`Skipping ${item.slug} because local version >= item.version`);
          await this.apply.markProcessed(item.idempotencyKey);
          return;
        }
        
+       this.logger.log(`Will apply landing: ${item.slug} v${item.version}`);
        await this.apply.applyLanding(item as LandingSyncPayload);
        await this.apply.markProcessed(item.idempotencyKey);
        this.logger.log(`Landing synced via HTTP pull: ${item.slug} v${item.version}`);
