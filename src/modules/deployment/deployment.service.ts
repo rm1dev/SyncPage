@@ -327,7 +327,7 @@ export class DeploymentService implements OnModuleInit {
           ? 'COMPLETED'
           : !probe?.ok
             ? 'UNREACHABLE'
-            : (active || probe.pendingSubmissions > 0 || probe.syncPull?.enabled)
+            : (active)
               ? 'DEPLOYING'
               : entry.status;
         const lastError = !probe?.ok
