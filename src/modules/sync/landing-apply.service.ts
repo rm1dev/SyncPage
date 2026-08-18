@@ -6,6 +6,7 @@ import axios from 'axios';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { FileService } from '../deployment/file.service';
 import { LandingSyncPayload } from './sync.types';
+import { ConfigService } from '@nestjs/config';
 
 export interface ActiveDownload {
   slug: string;
@@ -38,10 +39,14 @@ export class LandingApplyService {
   private activeDownload: ActiveDownload | null = null;
   private downloadHistory: DownloadHistory[] = [];
   private readonly maxHistory = 10;
+  
+  // برای جلوگیری از دانلود همزمان یک لندینگ
+  private activeLocks = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FileService,
+    private readonly config: ConfigService,
   ) {}
 
   async alreadyProcessed(idempotencyKey: string): Promise<boolean> {
@@ -83,49 +88,59 @@ export class LandingApplyService {
   }
 
   async applyLanding(payload: LandingSyncPayload) {
-    this.files.ensureDirs();
-    // Make sure we purge out old packages locally.
-    const zipPath = join(
-      this.files.tempRoot,
-      'packages',
-      `edge-${payload.slug}-${payload.version}.zip`,
-    );
-    if (existsSync(zipPath)) {
-      rmSync(zipPath, { force: true });
+    if (this.activeLocks.has(payload.slug)) {
+       this.logger.log(`Landing ${payload.slug} is already being downloaded, skipping concurrent request.`);
+       return;
     }
-    const extractDir = join(
-      this.files.tempRoot,
-      'preview',
-      `edge-${payload.slug}-${payload.version}`,
-    );
+    this.activeLocks.add(payload.slug);
 
-    await this.downloadWithFallback(payload, zipPath);
-
-    const checksum = this.files.checksumFile(zipPath);
-    if (checksum !== payload.checksum) {
-      throw new Error(
-        `Checksum mismatch for ${payload.slug}: expected ${payload.checksum}, got ${checksum}`,
+    try {
+      this.files.ensureDirs();
+      // Make sure we purge out old packages locally.
+      const zipPath = join(
+        this.files.tempRoot,
+        'packages',
+        `edge-${payload.slug}-${payload.version}.zip`,
       );
+      if (existsSync(zipPath)) {
+        rmSync(zipPath, { force: true });
+      }
+      const extractDir = join(
+        this.files.tempRoot,
+        'preview',
+        `edge-${payload.slug}-${payload.version}`,
+      );
+
+      await this.downloadWithFallback(payload, zipPath);
+
+      const checksum = this.files.checksumFile(zipPath);
+      if (checksum !== payload.checksum) {
+        throw new Error(
+          `Checksum mismatch for ${payload.slug}: expected ${payload.checksum}, got ${checksum}`,
+        );
+      }
+
+      this.files.extractZip(zipPath, extractDir);
+      this.files.replaceLandingAtomic(payload.slug, extractDir);
+      this.files.checksumDirMarker(payload.slug, payload.version, checksum);
+
+      await this.prisma.landing.upsert({
+        where: { slug: payload.slug },
+        create: {
+          slug: payload.slug,
+          version: payload.version,
+          checksum: payload.checksum,
+          status: 'ACTIVE',
+        },
+        update: {
+          version: payload.version,
+          checksum: payload.checksum,
+          status: 'ACTIVE',
+        },
+      });
+    } finally {
+       this.activeLocks.delete(payload.slug);
     }
-
-    this.files.extractZip(zipPath, extractDir);
-    this.files.replaceLandingAtomic(payload.slug, extractDir);
-    this.files.checksumDirMarker(payload.slug, payload.version, checksum);
-
-    await this.prisma.landing.upsert({
-      where: { slug: payload.slug },
-      create: {
-        slug: payload.slug,
-        version: payload.version,
-        checksum: payload.checksum,
-        status: 'ACTIVE',
-      },
-      update: {
-        version: payload.version,
-        checksum: payload.checksum,
-        status: 'ACTIVE',
-      },
-    });
   }
 
   private async downloadWithFallback(
@@ -226,6 +241,8 @@ export class LandingApplyService {
       startedAt: new Date().toISOString(),
     };
 
+    const token = this.config.get<string>('syncHttpToken') || '';
+
     try {
       for (let attempt = 0; attempt <= maxResumes; attempt++) {
         if (attempt > 0) {
@@ -239,6 +256,7 @@ export class LandingApplyService {
         try {
           const headers: Record<string, string> = {};
           if (downloaded > 0) headers.Range = `bytes=${downloaded}-`;
+          if (token) headers.Authorization = `Bearer ${token}`;
 
           // Check if payload has a downloadUrl
           let downloadUrl = url;
@@ -248,9 +266,16 @@ export class LandingApplyService {
              downloadUrl += '?bust=' + Date.now();
           }
 
+          let currentTimeout = 120_000;
+          if (total) {
+              const expectedSpeed = 500 * 1024; // 500 KB/s
+              const smartTimeout = Math.floor((total / expectedSpeed) * 1000) + 30_000;
+              currentTimeout = Math.max(120_000, smartTimeout);
+          }
+
           const response = await axios.get(downloadUrl, {
             responseType: 'stream',
-            timeout: 120_000,
+            timeout: currentTimeout,
             maxRedirects: 5,
             headers,
             validateStatus: (s: number) =>

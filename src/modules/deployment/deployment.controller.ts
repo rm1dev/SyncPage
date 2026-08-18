@@ -5,20 +5,24 @@ import {
   Param,
   Post,
   Res,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { AdminTokenGuard } from '../../common/guards/admin-token.guard';
 import { MasterOnlyGuard } from '../../common/guards/master-only.guard';
+import { SyncAuthGuard } from '../../common/guards/sync-auth.guard';
 import { DeploymentService } from './deployment.service';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 
 @Controller()
 export class DeploymentController {
@@ -80,6 +84,7 @@ export class DeploymentController {
   }
 
   @Get('api/internal/landings/:slug/package/:packageFile')
+  @UseGuards(SyncAuthGuard)
   getImmutablePackage(
     @Param('slug') slug: string,
     @Param('packageFile') packageFile: string,
@@ -92,6 +97,7 @@ export class DeploymentController {
 
   /** مسیر قدیمی برای سازگاری با eventهای قبلی */
   @Get('api/internal/landings/:slug/package')
+  @UseGuards(SyncAuthGuard)
   getPackage(@Param('slug') slug: string, @Res() res: Response) {
     const path = this.deployment.getPackagePath(slug);
     res.setHeader('Cache-Control', 'no-store');
@@ -100,7 +106,26 @@ export class DeploymentController {
 
   /** مانیفست همگام‌سازی برای Edge (جایگزین AMQP وقتی مسیر بسته است) */
   @Get('api/internal/sync/manifest')
-  getSyncManifest() {
-    return this.deployment.getSyncManifest();
+  @UseGuards(SyncAuthGuard)
+  async getSyncManifest(
+    @Query('since') sinceStr: string,
+    @Query('full') fullStr: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const isFull = fullStr === '1';
+    const manifest = await this.deployment.getSyncManifest(sinceStr, isFull);
+    
+    const manifestJson = JSON.stringify(manifest);
+    const etag = createHash('md5').update(manifestJson).digest('hex');
+
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      return res.status(304).send();
+    }
+
+    res.setHeader('ETag', etag);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).send(manifestJson);
   }
 }

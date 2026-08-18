@@ -391,6 +391,9 @@ export class DeploymentService implements OnModuleInit {
     // تراکنش: حذف لندینگ و افزودن ایونت به Outbox
     await this.prisma.$transaction(async (tx) => {
       await tx.landing.delete({ where: { slug } });
+      await tx.syncTombstone.create({
+        data: { entityType: 'LANDING', entityKey: slug },
+      });
       await tx.outboxEvent.create({
         data: {
           eventType: 'landing.delete',
@@ -443,8 +446,7 @@ export class DeploymentService implements OnModuleInit {
     return path;
   }
 
-  /** لیست لندینگ‌ها و فرم‌ها برای Edgeهایی که AMQP ندارن (HTTP pull) */
-  async getSyncManifest() {
+  async getSyncManifest(sinceStr?: string, isFull?: boolean) {
     const masterInternalUrl =
       this.config.get<string>('masterInternalUrl') || 'http://localhost:3000';
     const masterUrl = masterInternalUrl.endsWith('/')
@@ -460,18 +462,37 @@ export class DeploymentService implements OnModuleInit {
     const packagePath = (slug: string, version: number, checksum: string) =>
       `/api/internal/landings/${slug}/package/${slug}-v${version}-${checksum}.zip`;
 
+    let sinceDate: Date | undefined = undefined;
+    if (!isFull && sinceStr) {
+       const parsed = new Date(sinceStr);
+       if (!isNaN(parsed.getTime())) {
+          // Add overlap window: 60s
+          sinceDate = new Date(parsed.getTime() - 60000);
+       }
+    }
+
+    const whereUpdated = sinceDate ? { updatedAt: { gte: sinceDate } } : undefined;
+
     const rows = await this.prisma.landing.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', ...whereUpdated },
       orderBy: { updatedAt: 'desc' },
     });
 
-    // فرم‌ها هم توی مانیفست — Edge بدون AMQP تعریف فرم رو از همین‌جا می‌گیره
     const forms = await this.prisma.form.findMany({
+      where: whereUpdated,
       orderBy: { updatedAt: 'desc' },
       include: { category: true },
     });
 
     const settings = await this.prisma.systemSetting.findMany();
+
+    const tombstones = isFull ? [] : await this.prisma.syncTombstone.findMany({
+      where: sinceDate ? { deletedAt: { gte: sinceDate } } : undefined,
+    });
+
+    const deletedLandings = tombstones.filter(t => t.entityType === 'LANDING').map(t => t.entityKey);
+    const deletedForms = tombstones.filter(t => t.entityType === 'FORM').map(t => t.entityKey);
+    const deletedSettings = tombstones.filter(t => t.entityType === 'SETTING').map(t => t.entityKey);
 
     return {
       landings: rows.map((row) => ({
@@ -509,6 +530,9 @@ export class DeploymentService implements OnModuleInit {
         key: s.key,
         value: s.value,
       })),
+      deletedLandings,
+      deletedForms,
+      deletedSettings,
     };
   }
 }

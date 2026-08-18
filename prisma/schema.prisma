@@ -218,6 +218,16 @@ model SyncOperationNode {
   @@index([operationId])
 }
 
+model SyncTombstone {
+  id         String   @id @default(uuid())
+  entityType String   // "LANDING" | "FORM" | "SETTING"
+  entityKey  String   // slug یا key
+  deletedAt  DateTime @default(now())
+
+  @@index([entityType, deletedAt])
+  @@index([entityKey])
+}
+
 // نودهای Edge که از پنل مدیریت ثبت می‌شن
 model EdgeNode {
   id              String         @id @default(uuid())

@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -12,6 +13,7 @@ import { isMaster } from '../../config/role';
 import { LandingApplyService } from './landing-apply.service';
 import { FormSubmissionSyncPayload } from './sync.types';
 import { WebhookService } from '../form-engine/webhook.service';
+import { SyncAuthGuard } from '../../common/guards/sync-auth.guard';
 
 /**
  * مسیر HTTP برای سابمیشن‌های Edge→Master —
@@ -28,13 +30,54 @@ export class SyncHttpController {
   ) {}
 
   @Post('api/internal/sync/submissions')
+  @UseGuards(SyncAuthGuard)
   async receiveSubmission(@Body() body: unknown) {
+    if (!isMaster()) {
+      throw new NotFoundException('Not available on this node');
+    }
+    return this.processSubmission(body as Partial<FormSubmissionSyncPayload>);
+  }
+
+  @Post('api/internal/sync/submissions/batch')
+  @UseGuards(SyncAuthGuard)
+  async receiveSubmissionBatch(@Body() body: { items: Partial<FormSubmissionSyncPayload>[] }) {
+    if (!isMaster()) {
+      throw new NotFoundException('Not available on this node');
+    }
+    if (!body || !Array.isArray(body.items)) {
+      throw new BadRequestException('items array is required');
+    }
+    
+    // limit batch size to 20
+    const items = body.items.slice(0, 20);
+    const results = [];
+
+    for (const item of items) {
+      try {
+        const res = await this.processSubmission(item);
+        results.push({
+          idempotencyKey: item.idempotencyKey,
+          status: res.duplicate ? 'duplicate' : 'accepted',
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({
+          idempotencyKey: item.idempotencyKey,
+          status: 'failed',
+          error: message,
+        });
+      }
+    }
+
+    return { ok: true, results };
+  }
+
+  private async processSubmission(payload: Partial<FormSubmissionSyncPayload>) {
     // فقط Master سابمیشن قبول می‌کنه — روی Edge این مسیر معنی نداره
     if (!isMaster()) {
       throw new NotFoundException('Not available on this node');
     }
 
-    const payload = body as Partial<FormSubmissionSyncPayload>;
     if (
       !payload?.idempotencyKey ||
       !payload.submissionId ||
@@ -106,6 +149,6 @@ export class SyncHttpController {
       });
     }
 
-    return { ok: true };
+    return { ok: true, duplicate: false };
   }
 }

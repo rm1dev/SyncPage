@@ -43,12 +43,12 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    // هم Master هم Edge outbox دارن (جهت‌های متفاوت)
-    void this.startWorker();
-  }
-
-  private async startWorker() {
-    await this.connectWithRetry();
+    const syncMode = this.config.get<string>('syncMode') || 'auto';
+    if (syncMode === 'http') {
+      this.logger.log('Outbox: SYNC_MODE is http, skipping RabbitMQ connection');
+    } else {
+      await this.connectWithRetry();
+    }
     const pollMs = this.config.get<number>('outboxPollMs') || 3000;
     this.timer = setInterval(() => {
       void this.flush();
@@ -56,6 +56,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Outbox worker started as ${getNodeRole()} (poll ${pollMs}ms)`,
     );
+  }
+
+  private async startWorker() {
+    // Moved to onModuleInit to check config
   }
 
   async onModuleDestroy() {
@@ -311,10 +315,14 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     if (!urls.length) {
       throw new Error('MASTER_INTERNAL_URL / PUBLIC_BASE_URL not set');
     }
+    const token = this.config.get<string>('syncHttpToken') || '';
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    
     let lastErr: unknown;
     for (const url of urls) {
       try {
         const { data } = await axios.post<{ ok?: boolean }>(url, payload, {
+          headers,
           timeout: 15_000,
           validateStatus: (s: number) => s >= 200 && s < 300,
         });
@@ -333,12 +341,50 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       : new Error('HTTP submission push failed on all URLs');
   }
 
+  private async pushSubmissionsBatchViaHttp(
+    payloads: FormSubmissionSyncPayload[],
+  ): Promise<{ results: { idempotencyKey: string; status: string }[] }> {
+    const urls = this.masterHttpUrls('/api/internal/sync/submissions/batch');
+    if (!urls.length) {
+      throw new Error('MASTER_INTERNAL_URL / PUBLIC_BASE_URL not set');
+    }
+    const token = this.config.get<string>('syncHttpToken') || '';
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    
+    let lastErr: unknown;
+    for (const url of urls) {
+      try {
+        const { data } = await axios.post<{ ok?: boolean; results?: any[] }>(
+          url,
+          { items: payloads },
+          {
+            headers,
+            timeout: 15_000,
+            validateStatus: (s: number) => s >= 200 && s < 300,
+          }
+        );
+        if (data?.ok !== true || !data.results) {
+          throw new Error(`Unexpected response from ${url}`);
+        }
+        return { results: data.results };
+      } catch (err) {
+        lastErr = err;
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`HTTP submission batch push failed (${url}): ${message}`);
+      }
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error('HTTP submission batch push failed on all URLs');
+  }
+
   async flush() {
     if (this.publishing) return;
     this.publishing = true;
     try {
       const maxAttempts = this.config.get<number>('outboxMaxAttempts') || 10;
       const role = getNodeRole();
+      const syncMode = this.config.get<string>('syncMode') || 'auto';
 
       // هر نقش فقط eventهای مربوط به خودش رو publish می‌کنه
       const eventTypes =
@@ -358,15 +404,66 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       if (!batch.length) return;
 
       // کانال نداریم؟ وصل شدن رو بیرون از حلقه شروع کن (بدون await — flush معطل نمونه)
-      if (!this.channel && !this.connecting && !this.destroyed) {
+      if (syncMode !== 'http' && !this.channel && !this.connecting && !this.destroyed) {
         void this.connectWithRetry();
+      }
+
+      if (syncMode === 'http' && role !== 'MASTER') {
+         // Edge in HTTP mode: batch submissions
+         const submissionEvents = batch.filter(e => e.eventType === 'form.submission.sync');
+         if (submissionEvents.length > 0) {
+            try {
+              const payloads = submissionEvents.map(e => e.payload as unknown as FormSubmissionSyncPayload);
+              const { results } = await this.pushSubmissionsBatchViaHttp(payloads);
+              
+              for (const res of results) {
+                const event = submissionEvents.find(e => e.idempotencyKey === res.idempotencyKey);
+                if (event) {
+                  if (res.status === 'accepted' || res.status === 'duplicate') {
+                    await this.prisma.outboxEvent.update({
+                      where: { id: event.id },
+                      data: {
+                        status: OutboxStatus.SENT,
+                        attempts: { increment: 1 },
+                        lastError: null,
+                      },
+                    });
+                  } else {
+                    await this.prisma.outboxEvent.update({
+                      where: { id: event.id },
+                      data: {
+                        status: OutboxStatus.FAILED,
+                        attempts: { increment: 1 },
+                        lastError: 'Master returned failed status',
+                      },
+                    });
+                  }
+                }
+              }
+            } catch (err) {
+               const message = err instanceof Error ? err.message : String(err);
+               this.logger.error(`Outbox batch push failed: ${message}`);
+               for (const event of submissionEvents) {
+                  await this.prisma.outboxEvent.update({
+                    where: { id: event.id },
+                    data: {
+                      status: OutboxStatus.FAILED,
+                      attempts: { increment: 1 },
+                      lastError: message,
+                    },
+                  });
+               }
+            }
+         }
+         // Skip to next iteration since we handled all HTTP mode edge submissions
+         return;
       }
 
       for (const event of batch) {
         try {
           const payload = event.payload as unknown as OutboxPayload;
 
-          if (this.channel) {
+          if (syncMode !== 'http' && this.channel) {
             // مسیر اصلی: AMQP
             const queues = await this.queuesForEvent(event.eventType, payload);
             const nestMessage = {
@@ -401,6 +498,10 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
             this.logger.log(
               `Outbox sent via HTTP push: ${event.idempotencyKey}`,
             );
+          } else if (syncMode === 'http' && role === 'MASTER') {
+            // در حالت HTTP، مستر نیازی به ارسال نداره چون Edge خودش پول میکنه
+            // ایونت رو به عنوان SENT مارک میکنیم
+            this.logger.log(`Outbox marked as SENT in HTTP mode: ${event.idempotencyKey}`);
           } else {
             // نه کانال نه مسیر HTTP — بدون سوزوندن attempts بذار برای دور بعد
             continue;

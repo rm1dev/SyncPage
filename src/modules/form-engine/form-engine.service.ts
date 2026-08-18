@@ -186,14 +186,23 @@ export class FormEngineService {
 
   async remove(id: string) {
     const form = await this.getById(id);
-    await this.prisma.form.delete({ where: { id } });
-    if (isMaster()) {
-      await this.outbox.enqueueFormSync({
-        idempotencyKey: `form:delete:${form.key}:${Date.now()}`,
-        action: 'delete',
-        key: form.key,
+    
+    await this.prisma.$transaction(async (tx) => {
+      await tx.form.delete({ where: { id } });
+      await tx.syncTombstone.create({
+        data: { entityType: 'FORM', entityKey: form.key },
       });
-    }
+      if (isMaster()) {
+        await tx.outboxEvent.create({
+          data: {
+            eventType: 'form.sync',
+            idempotencyKey: `form:delete:${form.key}:${Date.now()}`,
+            payload: { action: 'delete', key: form.key },
+          },
+        });
+      }
+    });
+
     return { deleted: true };
   }
 

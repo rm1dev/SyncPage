@@ -70,4 +70,9 @@ export default () => ({
   githubRepo: process.env.SYNCPAGE_GITHUB_REPO || 'rm1dev/SyncPage',
   githubBranch: process.env.SYNCPAGE_GITHUB_BRANCH || 'main',
   domain: process.env.DOMAIN || '',
+  syncMode: process.env.SYNC_MODE || 'auto', // 'http' | 'amqp' | 'auto'
+  syncHttpToken: process.env.SYNC_HTTP_TOKEN || 'change-me-sync-token',
+  syncPullFastMs: parseInt(process.env.SYNC_PULL_FAST_MS || '10000', 10),
+  syncPullFullMs: parseInt(process.env.SYNC_PULL_FULL_MS || '300000', 10),
+  syncPullConcurrent: parseInt(process.env.SYNC_PULL_CONCURRENT || '2', 10),
 });

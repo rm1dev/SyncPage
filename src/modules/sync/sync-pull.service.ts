@@ -7,6 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import axios from 'axios';
+import * as http from 'http';
+import * as https from 'https';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { isEdge } from '../../config/role';
 import { LandingApplyService } from './landing-apply.service';
@@ -50,6 +52,9 @@ type Manifest = {
   landings?: ManifestItem[];
   forms?: FormManifestItem[];
   settings?: SettingManifestItem[];
+  deletedLandings?: string[];
+  deletedForms?: string[];
+  deletedSettings?: string[];
 };
 
 /**
@@ -59,8 +64,24 @@ type Manifest = {
 @Injectable()
 export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncPullService.name);
-  private timer: NodeJS.Timeout | null = null;
+  private fastTimer: NodeJS.Timeout | null = null;
+  private fullTimer: NodeJS.Timeout | null = null;
   private running = false;
+  private lastEtag: string | null = null;
+  private lastSinceDate: Date | null = null;
+  private syncStats = {
+    lastSuccess: null as Date | null,
+    lastFailure: null as Date | null,
+    lastError: null as string | null,
+    pending: 0,
+    successCount: 0,
+    failureCount: 0,
+  };
+
+  private readonly axiosInstance = axios.create({
+    httpAgent: new http.Agent({ keepAlive: true, maxSockets: 5 }),
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 5 }),
+  });
 
   constructor(
     private readonly config: ConfigService,
@@ -70,26 +91,43 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (!isEdge()) return;
-    // پیش‌فرض روشن روی Edge — حتی اگه AMQP اوکی باشه، فقط نسخهٔ عقب‌مونده رو می‌گیره
     if (process.env.SYNC_PULL_ENABLED === '0') {
       this.logger.log('HTTP sync pull disabled (SYNC_PULL_ENABLED=0)');
       return;
     }
-    const ms = parseInt(process.env.SYNC_PULL_MS || '20000', 10);
-    this.logger.log(`HTTP sync pull enabled (every ${ms}ms)`);
-    void this.tick();
-    this.timer = setInterval(() => void this.tick(), Math.max(10_000, ms));
+    const fastMs = parseInt(process.env.SYNC_PULL_FAST_MS || '10000', 10);
+    const fullMs = parseInt(process.env.SYNC_PULL_FULL_MS || '300000', 10);
+    this.logger.log(`HTTP sync pull enabled (fast: ${fastMs}ms, full: ${fullMs}ms)`);
+    
+    // Initial fetch
+    void this.tick(true);
+    
+    this.fastTimer = setInterval(() => void this.tick(false), Math.max(5_000, fastMs));
+    this.fullTimer = setInterval(() => void this.tick(true), Math.max(60_000, fullMs));
   }
 
   onModuleDestroy() {
-    if (this.timer) clearInterval(this.timer);
+    if (this.fastTimer) clearInterval(this.fastTimer);
+    if (this.fullTimer) clearInterval(this.fullTimer);
   }
 
-  private async tick() {
+  getStats() {
+    return this.syncStats;
+  }
+
+  private async tick(isFull: boolean) {
     if (this.running) return;
     this.running = true;
     try {
-      const manifest = await this.fetchManifest();
+      const manifest = await this.fetchManifestWithRetry(isFull);
+      if (!manifest) {
+        // 304 Not Modified
+        this.running = false;
+        return;
+      }
+
+      this.syncStats.pending = (manifest.landings?.length || 0) + (manifest.forms?.length || 0) + (manifest.settings?.length || 0);
+
       // اول فرم‌ها و تنظیمات که لندینگ‌های وابسته به فرم چیزی کم نداشته باشن
       if (manifest.settings) {
         for (const s of manifest.settings) {
@@ -106,14 +144,34 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
           }
         }
       }
-      await this.syncForms(manifest.forms);
+      if (manifest.deletedSettings) {
+         for (const key of manifest.deletedSettings) {
+             try {
+                 await this.prisma.systemSetting.delete({ where: { key }});
+             } catch (e) {
+                 /* ignore */
+             }
+         }
+      }
+
+      await this.syncForms(manifest.forms, manifest.deletedForms);
       for (const item of manifest.landings ?? []) {
         await this.syncOne(item);
       }
-      await this.cleanupDeletedLandings(manifest.landings ?? []);
+      await this.cleanupDeletedLandings(manifest.landings ?? [], manifest.deletedLandings);
+      
+      this.syncStats.lastSuccess = new Date();
+      this.syncStats.successCount++;
+      this.syncStats.lastError = null;
+      this.syncStats.pending = 0;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`HTTP sync pull failed: ${message}`);
+      this.syncStats.lastFailure = new Date();
+      this.syncStats.failureCount++;
+      this.syncStats.lastError = message;
+      // Reset ETag on failure to force full sync next time
+      this.lastEtag = null;
     } finally {
       this.running = false;
     }
@@ -135,27 +193,69 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     return urls;
   }
 
-  private async fetchManifest(): Promise<Manifest> {
+  private async fetchManifestWithRetry(isFull: boolean, attempt = 1): Promise<Manifest | null> {
+    try {
+      return await this.fetchManifest(isFull);
+    } catch (err) {
+      if (attempt >= 5) throw err;
+      const delay = Math.min(60_000, 2000 * 2 ** (attempt - 1));
+      await new Promise(r => setTimeout(r, delay));
+      return this.fetchManifestWithRetry(isFull, attempt + 1);
+    }
+  }
+
+  private async fetchManifest(isFull: boolean): Promise<Manifest | null> {
     const urls = this.manifestUrls();
     if (!urls.length) {
       throw new Error('MASTER_INTERNAL_URL / PUBLIC_BASE_URL not set');
     }
+    
+    const token = this.config.get<string>('syncHttpToken') || '';
+    const headers: Record<string, string> = {
+       'Accept-Encoding': 'gzip, deflate, br',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (!isFull && this.lastEtag) {
+       headers['If-None-Match'] = this.lastEtag;
+    }
+
+    const sinceParam = !isFull && this.lastSinceDate ? `since=${this.lastSinceDate.toISOString()}` : '';
+    const fullParam = isFull ? 'full=1' : '';
+    const qs = [sinceParam, fullParam].filter(Boolean).join('&');
+    const qsPrefix = qs ? '?' + qs : '';
+
     let lastErr: unknown;
     for (const url of urls) {
+      const fetchUrl = `${url}${qsPrefix}`;
       try {
-        const { data } = await axios.get<Manifest>(url, {
+        const response = await this.axiosInstance.get<Manifest>(fetchUrl, {
+          headers,
           timeout: 15_000,
-          validateStatus: (s: number) => s === 200,
+          validateStatus: (s: number) => s === 200 || s === 304,
         });
+
+        if (response.status === 304) {
+           return null;
+        }
+
+        if (response.headers['etag']) {
+           this.lastEtag = response.headers['etag'];
+        }
+        this.lastSinceDate = new Date();
+
+        const data = response.data;
         return {
           landings: Array.isArray(data?.landings) ? data.landings : [],
           forms: Array.isArray(data?.forms) ? data.forms : undefined,
           settings: Array.isArray(data?.settings) ? data.settings : undefined,
+          deletedLandings: Array.isArray(data?.deletedLandings) ? data.deletedLandings : undefined,
+          deletedForms: Array.isArray(data?.deletedForms) ? data.deletedForms : undefined,
+          deletedSettings: Array.isArray(data?.deletedSettings) ? data.deletedSettings : undefined,
         };
       } catch (err) {
         lastErr = err;
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Manifest fetch failed (${url}): ${message}`);
+        this.logger.warn(`Manifest fetch failed (${fetchUrl}): ${message}`);
       }
     }
     throw lastErr instanceof Error
@@ -164,7 +264,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** تعریف فرم‌ها از مانیفست — upsert جدیدها، حذف اون‌هایی که روی مستر پاک شدن */
-  private async syncForms(forms: FormManifestItem[] | undefined) {
+  private async syncForms(forms: FormManifestItem[] | undefined, deletedForms: string[] | undefined) {
     // مستر قدیمی forms نمی‌فرسته — دست به فرم‌های محلی نزن
     if (!Array.isArray(forms)) return;
 
@@ -236,23 +336,47 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     }
 
     // فرم‌هایی که دیگه توی مانیفست نیستن یعنی روی مستر حذف شدن
-    try {
-      const keys = new Set(forms.map((f) => f.key));
-      const locals = await this.prisma.form.findMany({
-        select: { key: true },
-      });
-      for (const local of locals) {
-        if (keys.has(local.key)) continue;
-        await this.prisma.form.delete({ where: { key: local.key } });
-        this.logger.log(`Form removed via HTTP pull: ${local.key}`);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`HTTP pull form cleanup failed: ${message}`);
+    if (deletedForms) {
+        for (const key of deletedForms) {
+           try {
+             await this.prisma.form.delete({ where: { key } });
+             this.logger.log(`Form removed via HTTP pull (tombstone): ${key}`);
+           } catch (e) {
+             /* ignore */
+           }
+        }
+    } else {
+        try {
+          const keys = new Set(forms.map((f) => f.key));
+          const locals = await this.prisma.form.findMany({
+            select: { key: true },
+          });
+          for (const local of locals) {
+            if (keys.has(local.key)) continue;
+            await this.prisma.form.delete({ where: { key: local.key } });
+            this.logger.log(`Form removed via HTTP pull (full sync): ${local.key}`);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`HTTP pull form cleanup failed: ${message}`);
+        }
     }
   }
 
-  private async cleanupDeletedLandings(landings: ManifestItem[]) {
+  private async cleanupDeletedLandings(landings: ManifestItem[], deletedLandings: string[] | undefined) {
+    if (deletedLandings) {
+        for (const slug of deletedLandings) {
+             try {
+                const idempotencyKey = `landing:${slug}:delete:sync-pull:${Date.now()}`;
+                await this.apply.deleteLanding({ slug, idempotencyKey });
+                this.logger.log(`Landing removed via HTTP pull (tombstone): ${slug}`);
+             } catch (e) {
+                /* ignore */
+             }
+        }
+        return;
+    }
+
     try {
       const activeSlugs = new Set(landings.map((l) => l.slug));
       const locals = await this.prisma.landing.findMany({
@@ -262,7 +386,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
         if (!activeSlugs.has(local.slug)) {
           const idempotencyKey = `landing:${local.slug}:delete:sync-pull:${Date.now()}`;
           await this.apply.deleteLanding({ slug: local.slug, idempotencyKey });
-          this.logger.log(`Landing removed via HTTP pull: ${local.slug}`);
+          this.logger.log(`Landing removed via HTTP pull (full sync): ${local.slug}`);
         }
       }
     } catch (err) {
