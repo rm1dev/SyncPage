@@ -382,7 +382,25 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
          return;
        }
        
-       this.logger.log(`Will apply landing: ${item.slug} v${item.version} (Local: v${local?.version || 'none'})`);
+       // بازنویسی لینک دانلود با استفاده از آدرس امنِ همین نود
+       const masterInternalUrl = (this.config.get<string>('masterInternalUrl') || '').replace(/\/$/, '');
+       let finalDownloadUrl = item.downloadUrl;
+       if (masterInternalUrl) {
+         try {
+           const path = new URL(item.downloadUrl).pathname;
+           finalDownloadUrl = `${masterInternalUrl}${path}`;
+         } catch(e) {}
+       }
+       
+       item.downloadUrl = finalDownloadUrl;
+       if (item.downloadUrlFallback) {
+         try {
+           const pathFallback = new URL(item.downloadUrlFallback).pathname;
+           item.downloadUrlFallback = `${masterInternalUrl}${pathFallback}`;
+         } catch(e) {}
+       }
+       
+       this.logger.log(`Will apply landing: ${item.slug} v${item.version} (Local: v${local?.version || 'none'}) from ${finalDownloadUrl}`);
        await this.apply.applyLanding(item as LandingSyncPayload);
        await this.apply.markProcessed(item.idempotencyKey);
        this.logger.log(`Landing synced via HTTP pull: ${item.slug} v${item.version}`);
