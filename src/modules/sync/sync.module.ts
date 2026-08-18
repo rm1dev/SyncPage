@@ -11,6 +11,6 @@ import { SyncPullService } from './sync-pull.service';
   imports: [DeploymentModule, forwardRef(() => FormEngineModule)],
   controllers: [SyncConsumerController, SyncHttpController],
   providers: [OutboxService, LandingApplyService, SyncPullService],
-  exports: [OutboxService],
+  exports: [OutboxService, SyncPullService],
 })
 export class SyncModule {}

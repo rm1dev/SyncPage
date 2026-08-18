@@ -193,6 +193,8 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       while (attempts < maxAttempts) {
         try {
           const reqUrl = new URL(url);
+          reqUrl.searchParams.set('t', String(Date.now())); // Bypass CDN Cache completely!
+          
           // 1.4 Incremental Manifest
           if (!isFullSync && this.lastSyncTimestamp) {
             reqUrl.searchParams.set('since', this.lastSyncTimestamp);
