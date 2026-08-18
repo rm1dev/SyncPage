@@ -128,4 +128,28 @@ export class DeploymentController {
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).send(manifestJson);
   }
+
+  @Post('api/internal/sync/manifest')
+  @UseGuards(SyncAuthGuard)
+  async postSyncManifest(
+    @Body('since') sinceStr: string,
+    @Body('full') fullStr: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const isFull = fullStr === '1';
+    const manifest = await this.deployment.getSyncManifest(sinceStr, isFull);
+    
+    const manifestJson = JSON.stringify(manifest);
+    const etag = createHash('md5').update(manifestJson).digest('hex');
+
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      return res.status(304).send();
+    }
+
+    res.setHeader('ETag', etag);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).send(manifestJson);
+  }
 }

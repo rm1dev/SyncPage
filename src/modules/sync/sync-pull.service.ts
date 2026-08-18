@@ -193,27 +193,31 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
       while (attempts < maxAttempts) {
         try {
           const reqUrl = new URL(url);
-          reqUrl.searchParams.set('t', String(Date.now())); // Bypass CDN Cache completely!
-          
-          // 1.4 Incremental Manifest
+          // Bypass CDN Cache completely by using POST instead of GET
+          let sinceStr = undefined;
+          let fullStr = undefined;
           if (!isFullSync && this.lastSyncTimestamp) {
-            reqUrl.searchParams.set('since', this.lastSyncTimestamp);
+            sinceStr = this.lastSyncTimestamp;
           } else {
-            reqUrl.searchParams.set('full', '1');
+            fullStr = '1';
           }
           
           const headers: Record<string, string> = {
             'Authorization': `Bearer ${this.config.get<string>('syncHttpToken')}`,
+            'Content-Type': 'application/json'
           };
           
-          // 1.3 ETag Caching
           if (!isFullSync && this.lastETag) {
             headers['If-None-Match'] = this.lastETag;
           }
 
-          const response = await this.httpClient.get<Manifest>(reqUrl.toString(), {
+          const response = await this.httpClient.post<Manifest>(reqUrl.toString(), {
+            since: sinceStr,
+            full: fullStr,
+            t: String(Date.now())
+          }, {
             headers,
-            timeout: 120_000, // 120 ثانیه
+            timeout: 120_000,
             validateStatus: (s: number) => s === 200 || s === 304,
           });
           
