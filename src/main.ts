@@ -89,9 +89,10 @@ async function bootstrap() {
 
   const rmqUrl =
     process.env.RABBITMQ_URL || 'amqp://syncpage:syncpage@localhost:5672';
+  const syncMode = (process.env.SYNC_MODE || 'auto').toLowerCase();
   const started: string[] = [];
 
-  if (isEdge()) {
+  if (syncMode !== 'http' && isEdge()) {
     const queue = process.env.RABBITMQ_QUEUE || 'landing.sync';
     // Edge ریموت: heartbeat بلند — مسیر بین‌الملل با ۳۰s مدام missed heartbeats می‌ده
     const heartbeat = parseInt(process.env.RABBITMQ_HEARTBEAT || '600', 10);
@@ -114,7 +115,7 @@ async function bootstrap() {
     started.push(`edge:${queue}`);
   }
 
-  if (isMaster()) {
+  if (syncMode !== 'http' && isMaster()) {
     // سابمیشن‌های Edge به این صف میان
     const queue = process.env.RABBITMQ_MASTER_QUEUE || 'form.submission';
     app.connectMicroservice<MicroserviceOptions>({

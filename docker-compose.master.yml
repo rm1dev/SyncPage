@@ -22,6 +22,7 @@ services:
     restart: unless-stopped
 
   rabbitmq:
+    profiles: ["amqp"]
     image: rabbitmq:3.13-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-syncpage}
@@ -67,8 +68,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      # RabbitMQ is optional; HTTP-only mode does not require it.
     healthcheck:
       # PORT داخل کانتینر همون APP_PORT هست
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:$${PORT:-3000}/api/health || exit 1"]
