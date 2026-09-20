@@ -71,7 +71,8 @@ curl -sf "$BASE/$SLUG/" | head -n 5
 echo
 
 echo "==> Check edge logs for sync"
-docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=120 app-edge | tee /tmp/syncpage-edge-logs.txt
+NODE_COMPOSE="${NODE_COMPOSE:-$ROOT/docker-compose.node.yml}"
+docker compose -f "$NODE_COMPOSE" logs --no-color --tail=120 app | tee /tmp/syncpage-edge-logs.txt
 grep -Eq "Landing synced on edge: ${SLUG}" /tmp/syncpage-edge-logs.txt
 echo "Edge sync observed in logs"
 
@@ -101,7 +102,7 @@ curl -sf -u syncpage:syncpage -H 'Content-Type: application/json' \
 echo
 
 sleep 5
-docker compose -f "$ROOT/docker-compose.yml" logs --no-color --tail=50 app-edge | tee /tmp/syncpage-edge-idem.txt
+docker compose -f "$NODE_COMPOSE" logs --no-color --tail=50 app | tee /tmp/syncpage-edge-idem.txt
 grep -F "Duplicate sync ignored (idempotent): ${IDEM}" /tmp/syncpage-edge-idem.txt
 echo "Idempotent duplicate confirmed"
 

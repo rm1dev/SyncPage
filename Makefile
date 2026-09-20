@@ -19,7 +19,6 @@ NODE_COMPOSE_FILE := $(shell \
     echo docker-compose.node.yml; \
   fi)
 COMPOSE_NODE   := $(DOCKER) compose -f $(NODE_COMPOSE_FILE) --env-file $(ENV_FILE)
-COMPOSE_LOCAL  := $(DOCKER) compose
 
 .PHONY: help \
 	master-up master-down master-down-v master-restart master-build master-logs master-ps master-pull \
@@ -33,7 +32,7 @@ help: ## Show available targets
 	@echo "Master (production):  make master-up | master-down | master-down-v | master-logs | master-build"
 	@echo "Edge node:            make node-up   | node-down   | node-down-v   | node-logs   | node-build"
 	@echo "  (compose file: $(NODE_COMPOSE_FILE) — set EDGE_NETWORK_MODE=host for remote)"
-	@echo "Local (dev stack):    make local-up  | local-down  | local-down-v  | local-logs  | smoke"
+	@echo "Combined local stack: make local-up  | local-down  | local-down-v  | local-logs  | smoke"
 	@echo ""
 	@echo "ENV_FILE default: $(ENV_FILE)  (override: make master-up ENV_FILE=.env.prod)"
 	@echo "DOCKER binary:    $(DOCKER)  (override: make master-ps DOCKER='sudo docker')"
@@ -95,28 +94,36 @@ node-ps: ## Show Edge node container status
 node-shell: ## Shell into Edge app container
 	$(COMPOSE_NODE) exec app sh
 
-# ----- Local development (docker-compose.yml) -----
+# ----- Local combined stack (Master + Edge) -----
 
-local-up: ## Start local Master+Edge+nginx stack
-	$(COMPOSE_LOCAL) up -d --build
+local-up: ## Start Master and Edge stacks together
+	$(COMPOSE_MASTER) up -d --build
+	$(COMPOSE_NODE) up -d --build
 
-local-down: ## Stop local stack
-	$(COMPOSE_LOCAL) down
+local-down: ## Stop Master and Edge stacks
+	$(COMPOSE_NODE) down
+	$(COMPOSE_MASTER) down
 
-local-down-v: ## Stop local stack and remove volumes
-	$(COMPOSE_LOCAL) down -v
+local-down-v: ## Stop Master and Edge stacks and remove volumes
+	$(COMPOSE_NODE) down -v
+	$(COMPOSE_MASTER) down -v
 
-local-restart: ## Restart local stack
-	$(COMPOSE_LOCAL) up -d --force-recreate
+local-restart: ## Restart Master and Edge stacks
+	$(COMPOSE_MASTER) up -d --force-recreate
+	$(COMPOSE_NODE) up -d --force-recreate
 
-local-build: ## Rebuild local stack
-	$(COMPOSE_LOCAL) up -d --build
+local-build: ## Rebuild Master and Edge stacks
+	$(COMPOSE_MASTER) build
+	$(COMPOSE_NODE) build
 
-local-logs: ## Tail local stack logs
-	$(COMPOSE_LOCAL) logs -f
+local-logs: ## Tail Master stack logs
+	$(COMPOSE_MASTER) logs -f
 
-local-ps: ## Show local container status
-	$(COMPOSE_LOCAL) ps
+local-ps: ## Show container status for Master and Edge
+	@echo "=== Master Stack ==="
+	@$(COMPOSE_MASTER) ps
+	@echo "=== Edge Stack ==="
+	@$(COMPOSE_NODE) ps
 
 smoke: ## Run local smoke test script
 	bash scripts/smoke-test.sh
