@@ -18,7 +18,7 @@ async function main() {
         id: edgeNodeId,
         title: 'Local Edge Node (Dev)',
         host: 'app-edge', // نام کانتینر در داکر
-        port: 2002,
+        port: Number(process.env.EDGE_PORT || 3000),
         queueName: `landing.sync.${edgeNodeId}`,
         installToken,
         status: EdgeNodeStatus.ONLINE, // فرض بر این است که در لوکال همیشه آنلاین است

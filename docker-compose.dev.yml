@@ -1,0 +1,165 @@
+# =============================================================================
+# SyncPage Development Stack (Master + Edge with Isolated Databases & Hot-Reload)
+# Usage:
+#   make dev
+#   or: docker compose -f docker-compose.dev.yml up -d --build
+# =============================================================================
+services:
+  db-master:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: syncpage
+      POSTGRES_PASSWORD: syncpage
+      POSTGRES_DB: syncpage
+    volumes:
+      - pgdata_master:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syncpage -d syncpage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  db-edge:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: syncpage
+      POSTGRES_PASSWORD: syncpage
+      POSTGRES_DB: syncpage_edge
+    volumes:
+      - pgdata_edge:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syncpage -d syncpage_edge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5433:5432"
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: syncpage
+      RABBITMQ_DEFAULT_PASS: syncpage
+    entrypoint: ["/bin/sh", "/entrypoint-wrapper.sh"]
+    volumes:
+      - ./rabbitmq/definitions.template.json:/etc/rabbitmq/definitions.template.json:ro
+      - ./rabbitmq/docker-entrypoint.sh:/entrypoint-wrapper.sh:ro
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rmqdata:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  app-master:
+    build: .
+    environment:
+      NODE_ROLE: MASTER
+      NODE_ENV: development
+      PORT: "1313"
+      EDGE_PORT: "3000"
+      DATABASE_URL: postgresql://syncpage:syncpage@db-master:5432/syncpage?schema=public
+      RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
+      RABBITMQ_PUBLIC_URL: amqp://syncpage:syncpage@localhost:5672
+      RABBITMQ_QUEUE: landing.sync
+      RABBITMQ_MASTER_QUEUE: form.submission
+      ADMIN_TOKEN: change-me-admin-token
+      STATIC_PAGES_PATH: /app/static_pages
+      TEMP_PATH: /app/temp
+      MASTER_INTERNAL_URL: http://app-master:1313
+      PUBLIC_BASE_URL: http://localhost:1313
+      OUTBOX_POLL_MS: "3000"
+      OUTBOX_MAX_ATTEMPTS: "10"
+      SYNCPAGE_GITHUB_REPO: rm1dev/SyncPage
+      SYNCPAGE_GITHUB_BRANCH: main
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - static_pages_master:/app/static_pages
+      - temp_data_master:/app/temp
+      # مونت کردن فایل‌های سورس برای مشاهده آنی تغییرات (Hot-Reload)
+      - ./src:/app/src
+      - ./prisma:/app/prisma:ro
+      - ./views:/app/views
+      - ./public:/app/public
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./nest-cli.json:/app/nest-cli.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tsconfig.build.json:/app/tsconfig.build.json
+      - /app/node_modules
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
+    depends_on:
+      db-master:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "1313:1313"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1313/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  app-edge:
+    build: .
+    environment:
+      NODE_ROLE: EDGE
+      NODE_ENV: development
+      EDGE_NODE_ID: "03d3a6c3-4fec-4ab7-b56b-04cb756c828f"
+      PORT: "3000"
+      DATABASE_URL: postgresql://syncpage:syncpage@db-edge:5432/syncpage_edge?schema=public
+      RABBITMQ_URL: amqp://syncpage:syncpage@rabbitmq:5672
+      RABBITMQ_QUEUE: landing.sync.03d3a6c3-4fec-4ab7-b56b-04cb756c828f
+      RABBITMQ_MASTER_QUEUE: form.submission
+      ADMIN_TOKEN: unused-on-edge
+      STATIC_PAGES_PATH: /app/static_pages
+      TEMP_PATH: /app/temp
+      MASTER_INTERNAL_URL: http://app-master:1313
+      PUBLIC_BASE_URL: http://localhost:${DEV_EDGE_PORT:-3001}
+      SYNC_PULL_ENABLED: "1"
+      SYNC_PULL_MS: "20000"
+    volumes:
+      - static_pages_edge:/app/static_pages
+      - temp_data_edge:/app/temp
+      # مونت کردن فایل‌های سورس برای مشاهده آنی تغییرات (Hot-Reload)
+      - ./src:/app/src
+      - ./prisma:/app/prisma:ro
+      - ./views:/app/views
+      - ./public:/app/public
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./nest-cli.json:/app/nest-cli.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tsconfig.build.json:/app/tsconfig.build.json
+      - /app/node_modules
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
+    depends_on:
+      db-edge:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      app-master:
+        condition: service_healthy
+    ports:
+      - "${DEV_EDGE_PORT:-3001}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pgdata_master:
+  pgdata_edge:
+  rmqdata:
+  static_pages_master:
+  temp_data_master:
+  static_pages_edge:
+  temp_data_edge:

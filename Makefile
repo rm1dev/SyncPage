@@ -19,20 +19,23 @@ NODE_COMPOSE_FILE := $(shell \
     echo docker-compose.node.yml; \
   fi)
 COMPOSE_NODE   := $(DOCKER) compose -f $(NODE_COMPOSE_FILE) --env-file $(ENV_FILE)
+COMPOSE_DEV    := $(DOCKER) compose -f docker-compose.dev.yml
 
 .PHONY: help \
 	master-up master-down master-down-v master-restart master-build master-logs master-ps master-pull \
 	node-up node-down node-down-v node-restart node-build node-logs node-ps \
 	local-up local-down local-down-v local-restart local-build local-logs local-ps \
+	dev dev-down dev-down-v dev-restart dev-build dev-logs dev-ps \
 	smoke master-shell node-shell
 
 help: ## Show available targets
 	@echo "SyncPage Makefile"
 	@echo ""
-	@echo "Master (production):  make master-up | master-down | master-down-v | master-logs | master-build"
-	@echo "Edge node:            make node-up   | node-down   | node-down-v   | node-logs   | node-build"
+	@echo "Development (hot-reload): make dev       | dev-down    | dev-down-v    | dev-logs    | dev-build"
+	@echo "Master (production):      make master-up | master-down | master-down-v | master-logs | master-build"
+	@echo "Edge node:                make node-up   | node-down   | node-down-v   | node-logs   | node-build"
 	@echo "  (compose file: $(NODE_COMPOSE_FILE) — set EDGE_NETWORK_MODE=host for remote)"
-	@echo "Combined local stack: make local-up  | local-down  | local-down-v  | local-logs  | smoke"
+	@echo "Combined prod-like stack: make local-up  | local-down  | local-down-v  | local-logs  | smoke"
 	@echo ""
 	@echo "ENV_FILE default: $(ENV_FILE)  (override: make master-up ENV_FILE=.env.prod)"
 	@echo "DOCKER binary:    $(DOCKER)  (override: make master-ps DOCKER='sudo docker')"
@@ -124,6 +127,29 @@ local-ps: ## Show container status for Master and Edge
 	@$(COMPOSE_MASTER) ps
 	@echo "=== Edge Stack ==="
 	@$(COMPOSE_NODE) ps
+
+# ----- Development stack with Hot-Reload (docker-compose.dev.yml) -----
+
+dev: ## Start local dev stack with hot-reload and isolated DBs
+	$(COMPOSE_DEV) up -d --build --force-recreate --remove-orphans
+
+dev-down: ## Stop local dev stack
+	$(COMPOSE_DEV) down
+
+dev-down-v: ## Stop local dev stack and wipe volumes
+	$(COMPOSE_DEV) down -v
+
+dev-restart: ## Restart local dev stack
+	$(COMPOSE_DEV) up -d --force-recreate
+
+dev-build: ## Rebuild dev stack images
+	$(COMPOSE_DEV) build
+
+dev-logs: ## Tail all dev logs (or make dev-logs s=app-master)
+	$(COMPOSE_DEV) logs -f $(s)
+
+dev-ps: ## Show dev container status
+	$(COMPOSE_DEV) ps
 
 smoke: ## Run local smoke test script
 	bash scripts/smoke-test.sh
