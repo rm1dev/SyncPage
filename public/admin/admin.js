@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         settings.style.display = /** @type {HTMLInputElement} */ (this).checked
           ? 'block'
           : 'none';
-      renderSnippets();
+      refreshLandingSnippets();
     });
   }
 
@@ -158,12 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
         settings.style.display = /** @type {HTMLInputElement} */ (this).checked
           ? 'block'
           : 'none';
-      renderSnippets();
+      refreshLandingSnippets();
     });
   }
 
   document.querySelectorAll('.product-item-checkbox').forEach((cb) => {
-    cb.addEventListener('change', renderSnippets);
+    cb.addEventListener('change', refreshLandingSnippets);
   });
 
   // ===================================================================
