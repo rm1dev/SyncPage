@@ -12,6 +12,7 @@
 
 <div class="content-wrapper" style="margin-bottom: 2rem;">
   <form method="GET" action="/spadmin/submissions" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+    <input type="hidden" name="page" value="1" />
     <div class="form-group" style="flex: 1; min-width: 250px; margin-bottom: 0;">
       <label for="formId">انتخاب فرم:</label>
       <select name="formId" id="formId" class="form-control">
@@ -46,6 +47,15 @@
       <input type="text" name="utmFilter" id="utmFilter" placeholder="مثلاً instagram یا summer_sale" value="{{utmFilter}}" class="form-control" />
     </div>
 
+    <div class="form-group" style="min-width: 110px; margin-bottom: 0;">
+      <label for="pageSize">تعداد در صفحه:</label>
+      <select name="pageSize" id="pageSize" class="form-control">
+        <option value="20" {{#if (eq pagination.pageSize 20)}}selected{{/if}}>20</option>
+        <option value="50" {{#if (eq pagination.pageSize 50)}}selected{{/if}}>50</option>
+        <option value="100" {{#if (eq pagination.pageSize 100)}}selected{{/if}}>100</option>
+      </select>
+    </div>
+
     <div style="display: flex; gap: 0.5rem;">
       <button type="submit" class="btn btn-primary" style="height: 38px;">
         <span>فیلتر و گزارش</span>
@@ -61,7 +71,7 @@
 <div class="content-wrapper">
   <div class="section-header">
     <span>لیست لیدهای ثبت‌شده</span>
-    <span class="status-pill">{{submissions.length}} مورد</span>
+    <span class="status-pill">{{pagination.total}} مورد</span>
   </div>
   <div class="table-responsive">
     <table class="data-table">
@@ -117,4 +127,19 @@
       </tbody>
     </table>
   </div>
+  {{#if pagination.total}}
+    <nav class="admin-pagination" aria-label="صفحه‌بندی لیدها">
+      {{#if pagination.hasPrevious}}
+        <a class="btn btn-secondary" href="{{pagination.previousUrl}}">صفحه قبل</a>
+      {{else}}
+        <span class="btn btn-secondary admin-pagination-disabled">صفحه قبل</span>
+      {{/if}}
+      <span>صفحه {{pagination.page}} از {{pagination.totalPages}}</span>
+      {{#if pagination.hasNext}}
+        <a class="btn btn-secondary" href="{{pagination.nextUrl}}">صفحه بعد</a>
+      {{else}}
+        <span class="btn btn-secondary admin-pagination-disabled">صفحه بعد</span>
+      {{/if}}
+    </nav>
+  {{/if}}
 </div>

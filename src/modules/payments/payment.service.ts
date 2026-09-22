@@ -18,45 +18,105 @@ export interface PaymentFilter {
 export class PaymentService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(filter: PaymentFilter = {}) {
+  private buildWhere(filter: PaymentFilter): Prisma.PaymentWhereInput {
     const where: Prisma.PaymentWhereInput = {};
 
-    if (filter.formId) {
-      where.formId = filter.formId;
-    }
-    if (filter.productId) {
-      where.productId = filter.productId;
-    }
-    if (filter.status) {
-      where.status = filter.status;
-    }
+    if (filter.formId) where.formId = filter.formId;
+    if (filter.productId) where.productId = filter.productId;
+    if (filter.status) where.status = filter.status;
     if (filter.fromDate || filter.toDate) {
       where.createdAt = {};
-      if (filter.fromDate) {
-        where.createdAt.gte = filter.fromDate;
-      }
-      if (filter.toDate) {
-        where.createdAt.lte = filter.toDate;
-      }
+      if (filter.fromDate) where.createdAt.gte = filter.fromDate;
+      if (filter.toDate) where.createdAt.lte = filter.toDate;
     }
 
-    return this.prisma.payment.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        form: { select: { id: true, title: true, key: true, slug: true } },
-        product: { select: { id: true, title: true, price: true } },
-        submission: {
-          select: {
-            id: true,
-            payload: true,
-            createdAt: true,
-            otpStatus: true,
-          },
-        },
-        edgeNode: { select: { id: true, title: true } },
+    return where;
+  }
+
+  private readonly listInclude = {
+    form: { select: { id: true, title: true, key: true, slug: true } },
+    product: { select: { id: true, title: true, price: true } },
+    submission: {
+      select: {
+        id: true,
+        payload: true,
+        createdAt: true,
+        otpStatus: true,
       },
+    },
+    edgeNode: { select: { id: true, title: true } },
+  } satisfies Prisma.PaymentInclude;
+
+  async list(filter: PaymentFilter = {}) {
+    return this.prisma.payment.findMany({
+      where: this.buildWhere(filter),
+      orderBy: { createdAt: 'desc' },
+      include: this.listInclude,
     });
+  }
+
+  async listPaginated(
+    filter: PaymentFilter,
+    page: number,
+    pageSize: number,
+  ) {
+    const where = this.buildWhere(filter);
+    const [total, items, statusSummaries] = await this.prisma.$transaction([
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: this.listInclude,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.payment.groupBy({
+        by: ['status'],
+        where,
+        orderBy: { status: 'asc' },
+        _count: { id: true },
+        _sum: { amount: true },
+      }),
+    ]);
+    const summaryByStatus = new Map<
+      PaymentStatus,
+      { count: number; totalAmount: number }
+    >(
+      statusSummaries.map((summary) => {
+        const aggregate = summary as {
+          status: PaymentStatus;
+          _count: { id: number | null };
+          _sum: { amount: number | null };
+        };
+        return [
+          aggregate.status,
+          {
+            count: aggregate._count.id || 0,
+            totalAmount: aggregate._sum.amount || 0,
+          },
+        ];
+      }),
+    );
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+      stats: {
+        completedCount:
+          summaryByStatus.get(PaymentStatus.COMPLETED)?.count || 0,
+        pendingCount: summaryByStatus.get(PaymentStatus.PENDING)?.count || 0,
+        failedCount:
+          (summaryByStatus.get(PaymentStatus.FAILED)?.count || 0) +
+          (summaryByStatus.get(PaymentStatus.REVERSED)?.count || 0),
+        totalCompletedAmount:
+          summaryByStatus.get(PaymentStatus.COMPLETED)?.totalAmount || 0,
+      },
+    };
   }
 
   async getById(id: string) {

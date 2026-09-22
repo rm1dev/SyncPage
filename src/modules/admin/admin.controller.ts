@@ -88,6 +88,30 @@ export class AdminController {
     });
   }
 
+  private paginationView(
+    path: string,
+    filters: Record<string, string | undefined>,
+    pagination: { page: number; pageSize: number; total: number; totalPages: number },
+  ) {
+    const buildUrl = (targetPage: number) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(filters)) {
+        if (value) params.set(key, value);
+      }
+      params.set('page', String(targetPage));
+      params.set('pageSize', String(pagination.pageSize));
+      return `${path}?${params.toString()}`;
+    };
+
+    return {
+      ...pagination,
+      hasPrevious: pagination.page > 1,
+      hasNext: pagination.page < pagination.totalPages,
+      previousUrl: buildUrl(Math.max(1, pagination.page - 1)),
+      nextUrl: buildUrl(Math.min(pagination.totalPages, pagination.page + 1)),
+    };
+  }
+
   @Get('login')
   @Render('admin/login')
   loginPage(@Query('error') error?: string) {
@@ -1200,6 +1224,8 @@ export class AdminController {
     @Query('status') status?: PaymentStatus,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') pageValue?: string,
+    @Query('pageSize') pageSizeValue?: string,
   ) {
     const [forms, products] = await Promise.all([
       this.forms.list(),
@@ -1225,29 +1251,24 @@ export class AdminController {
       }
     }
 
-    const rawPayments = await this.payments.list({
-      formId: formId || undefined,
-      productId: productId || undefined,
-      status: status || undefined,
-      fromDate,
-      toDate,
-    });
+    const page = Math.max(1, Number.parseInt(pageValue || '1', 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(10, Number.parseInt(pageSizeValue || '20', 10) || 20),
+    );
+    const result = await this.payments.listPaginated(
+      {
+        formId: formId || undefined,
+        productId: productId || undefined,
+        status: status || undefined,
+        fromDate,
+        toDate,
+      },
+      page,
+      pageSize,
+    );
 
-    let completedCount = 0;
-    let pendingCount = 0;
-    let failedCount = 0;
-    let totalCompletedAmount = 0;
-
-    const payments = rawPayments.map((p) => {
-      if (p.status === 'COMPLETED') {
-        completedCount++;
-        totalCompletedAmount += p.amount;
-      } else if (p.status === 'PENDING') {
-        pendingCount++;
-      } else {
-        failedCount++;
-      }
-
+    const payments = result.items.map((p) => {
       const cd = new Date(p.createdAt);
       const cj = (cd as any).jalali;
       const createdAtFa = cj
@@ -1299,12 +1320,20 @@ export class AdminController {
       startDate,
       endDate,
       payments,
+      pagination: this.paginationView('/spadmin/payments', {
+        formId,
+        productId,
+        status,
+        startDate,
+        endDate,
+      }, result.pagination),
       stats: {
-        totalCount: rawPayments.length,
-        completedCount,
-        pendingCount,
-        failedCount,
-        formattedTotalAmount: totalCompletedAmount.toLocaleString('fa-IR'),
+        totalCount: result.pagination.total,
+        completedCount: result.stats.completedCount,
+        pendingCount: result.stats.pendingCount,
+        failedCount: result.stats.failedCount,
+        formattedTotalAmount:
+          result.stats.totalCompletedAmount.toLocaleString('fa-IR'),
       },
     };
   }
@@ -1371,6 +1400,8 @@ export class AdminController {
     @Query('endDate') endDate?: string,
     @Query('otpFilter') otpFilter?: string,
     @Query('utmFilter') utmFilter?: string,
+    @Query('page') pageValue?: string,
+    @Query('pageSize') pageSizeValue?: string,
   ) {
     const forms = await this.forms.list();
     const activeFormId = formId || undefined;
@@ -1395,15 +1426,22 @@ export class AdminController {
       }
     }
 
-    const rawSubmissions = await this.forms.listSubmissions(
+    const page = Math.max(1, Number.parseInt(pageValue || '1', 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(10, Number.parseInt(pageSizeValue || '20', 10) || 20),
+    );
+    const result = await this.forms.listSubmissionsPaginated(
       activeFormId,
       fromDate,
       toDate,
       otpFilter,
       utmFilter,
+      page,
+      pageSize,
     );
 
-    const submissions = rawSubmissions.map((s) => {
+    const submissions = result.items.map((s) => {
       const d = new Date(s.createdAt);
       const j = (d as any).jalali;
       const jdateStr = j
@@ -1447,6 +1485,13 @@ export class AdminController {
       otpFilter,
       utmFilter,
       submissions,
+      pagination: this.paginationView('/spadmin/submissions', {
+        formId,
+        startDate,
+        endDate,
+        otpFilter,
+        utmFilter,
+      }, result.pagination),
     };
   }
 

@@ -864,14 +864,13 @@ export class FormEngineService {
     });
   }
 
-  listSubmissions(
+  private buildSubmissionWhere(
     formId?: string,
     fromDate?: Date,
     toDate?: Date,
     otpFilter?: string,
     utmFilter?: string,
-    limit?: number,
-  ) {
+  ): Prisma.FormSubmissionWhereInput {
     const where: Prisma.FormSubmissionWhereInput = {};
     if (formId) where.formId = formId;
 
@@ -893,19 +892,76 @@ export class FormEngineService {
       };
     }
 
+    return where;
+  }
+
+  private readonly submissionListInclude = {
+    form: {
+      select: { title: true, key: true },
+    },
+    edgeNode: {
+      select: { title: true, host: true },
+    },
+  } satisfies Prisma.FormSubmissionInclude;
+
+  listSubmissions(
+    formId?: string,
+    fromDate?: Date,
+    toDate?: Date,
+    otpFilter?: string,
+    utmFilter?: string,
+    limit?: number,
+  ) {
     return this.prisma.formSubmission.findMany({
-      where,
-      include: {
-        form: {
-          select: { title: true, key: true },
-        },
-        edgeNode: {
-          select: { title: true, host: true },
-        },
-      },
+      where: this.buildSubmissionWhere(
+        formId,
+        fromDate,
+        toDate,
+        otpFilter,
+        utmFilter,
+      ),
+      include: this.submissionListInclude,
       orderBy: { createdAt: 'desc' },
       ...(limit !== undefined ? { take: limit } : {}),
     });
+  }
+
+  async listSubmissionsPaginated(
+    formId: string | undefined,
+    fromDate: Date | undefined,
+    toDate: Date | undefined,
+    otpFilter: string | undefined,
+    utmFilter: string | undefined,
+    page: number,
+    pageSize: number,
+  ) {
+    const where = this.buildSubmissionWhere(
+      formId,
+      fromDate,
+      toDate,
+      otpFilter,
+      utmFilter,
+    );
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.formSubmission.count({ where }),
+      this.prisma.formSubmission.findMany({
+        where,
+        include: this.submissionListInclude,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    };
   }
 
   private async enqueueFormUpsert(form: {
