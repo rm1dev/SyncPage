@@ -5,6 +5,7 @@ import { NodesModule } from '../nodes/nodes.module';
 import { UpdatesModule } from '../updates/updates.module';
 import { SyncModule } from '../sync/sync.module';
 import { CategoryModule } from '../categories/category.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { AdminController } from './admin.controller';
 
 @Module({
@@ -15,6 +16,7 @@ import { AdminController } from './admin.controller';
     UpdatesModule,
     SyncModule,
     CategoryModule,
+    PaymentsModule,
   ],
   controllers: [AdminController],
 })

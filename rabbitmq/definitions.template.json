@@ -78,6 +78,14 @@
     {
       "source": "landing.exchange",
       "vhost": "/",
+      "destination": "landing.sync",
+      "destination_type": "queue",
+      "routing_key": "product.sync",
+      "arguments": {}
+    },
+    {
+      "source": "landing.exchange",
+      "vhost": "/",
       "destination": "landing.sync.dlq",
       "destination_type": "queue",
       "routing_key": "landing.sync.failed",

@@ -11,6 +11,7 @@ import { OutboxService } from '../sync/outbox.service';
 import { WebhookService } from './webhook.service';
 import { KavenegarService } from './kavenegar.service';
 import { CategoryService } from '../categories/category.service';
+import { PaypingService } from '../payments/payping.service';
 import { CreateFormDto, UpdateFormDto } from './dto/form.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class FormEngineService {
     private readonly webhook: WebhookService,
     private readonly kavenegar: KavenegarService,
     private readonly categories: CategoryService,
+    private readonly payping: PaypingService,
   ) {}
 
   list() {
@@ -88,14 +90,23 @@ export class FormEngineService {
   async getById(id: string) {
     const form = await this.prisma.form.findUnique({
       where: { id },
-      include: { category: true },
+      include: {
+        category: true,
+        formProducts: { include: { product: true } },
+      },
     });
     if (!form) throw new NotFoundException('Form not found');
     return form;
   }
 
   async getByKey(key: string) {
-    const form = await this.prisma.form.findUnique({ where: { key } });
+    const form = await this.prisma.form.findUnique({
+      where: { key },
+      include: {
+        category: true,
+        formProducts: { include: { product: true } },
+      },
+    });
     if (!form) throw new NotFoundException('Form not found');
     return form;
   }
@@ -119,14 +130,31 @@ export class FormEngineService {
         otpTemplate: dto.otpTemplate || 'verify',
         otpLength: dto.otpLength || 5,
         profileId: dto.profileId || null,
+        paymentEnabled: dto.paymentEnabled || false,
       },
-      include: { category: true },
+      include: {
+        category: true,
+        formProducts: { include: { product: true } },
+      },
     });
+
+    if (dto.productIds && dto.productIds.length > 0) {
+      await this.prisma.formProduct.createMany({
+        data: dto.productIds.map((productId) => ({
+          formId: form.id,
+          productId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    const updatedForm = await this.getById(form.id);
+
     // تعریف فرم رو برای Edgeها می‌فرستیم
     if (isMaster()) {
-      await this.enqueueFormUpsert(form);
+      await this.enqueueFormUpsert(updatedForm);
     }
-    return form;
+    return updatedForm;
   }
 
   async update(id: string, dto: UpdateFormDto) {
@@ -134,7 +162,7 @@ export class FormEngineService {
     if (dto.categoryId !== undefined) {
       await this.categories.requireById(dto.categoryId);
     }
-    const form = await this.prisma.form.update({
+    await this.prisma.form.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
@@ -175,18 +203,35 @@ export class FormEngineService {
         ...(dto.profileId !== undefined
           ? { profileId: dto.profileId || null }
           : {}),
+        ...(dto.paymentEnabled !== undefined
+          ? { paymentEnabled: dto.paymentEnabled }
+          : {}),
       },
-      include: { category: true },
     });
-    if (isMaster()) {
-      await this.enqueueFormUpsert(form);
+
+    if (dto.productIds !== undefined) {
+      await this.prisma.formProduct.deleteMany({ where: { formId: id } });
+      if (dto.productIds.length > 0) {
+        await this.prisma.formProduct.createMany({
+          data: dto.productIds.map((productId) => ({
+            formId: id,
+            productId,
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
-    return form;
+
+    const updatedForm = await this.getById(id);
+    if (isMaster()) {
+      await this.enqueueFormUpsert(updatedForm);
+    }
+    return updatedForm;
   }
 
   async remove(id: string) {
     const form = await this.getById(id);
-    
+
     await this.prisma.$transaction(async (tx) => {
       await tx.form.delete({ where: { id } });
       await tx.syncTombstone.create({
@@ -227,16 +272,15 @@ export class FormEngineService {
     const code = this.createOtpCode(length);
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
     const edgeNodeId = process.env.EDGE_NODE_ID || null;
+    // روی Edge جدول EdgeNode خالی است و رابطه FK نقض می‌شود؛ شناسه نود فقط در Outbox به Master ارسال می‌شود
+    const localEdgeNodeId = isEdge() ? null : edgeNodeId;
     const safePayload = { ...payload, [otpField]: mobile };
 
     const submission = await this.prisma.$transaction(async (tx) => {
       const created = await tx.formSubmission.create({
         data: {
           formId: form.id,
-          // edgeNodeId will be null if it doesn't match an existing foreign key in some cases,
-          // but since Prisma requires it to match, and we might not have it strictly synced if self-referenced,
-          // we use edgeNodeId directly. We already fixed the DB side.
-          edgeNodeId,
+          edgeNodeId: localEdgeNodeId,
           payload: safePayload as Prisma.InputJsonValue,
           otpStatus: 'UNVERIFIED',
         },
@@ -256,11 +300,11 @@ export class FormEngineService {
           data: {
             eventType: 'form.submission.sync',
             idempotencyKey: `submission:${created.id}:v:1`,
-            payload: this.submissionSyncPayload(
+            payload: (await this.submissionSyncPayload(
               created,
               form.key,
               edgeNodeId,
-            ) as unknown as Prisma.InputJsonValue,
+            )) as unknown as Prisma.InputJsonValue,
           },
         });
       }
@@ -285,7 +329,12 @@ export class FormEngineService {
     };
   }
 
-  async verifyOtp(key: string, submissionId: string, code: string) {
+  async verifyOtp(
+    key: string,
+    submissionId: string,
+    code: string,
+    originHost?: string,
+  ) {
     const form = await this.getByKey(key);
     if (!form.otpEnabled) {
       throw new BadRequestException('OTP is not enabled for this form');
@@ -351,17 +400,92 @@ export class FormEngineService {
           data: {
             eventType: 'form.submission.sync',
             idempotencyKey: `submission:${submission.id}:v:${submission.syncVersion}`,
-            payload: this.submissionSyncPayload(
+            payload: (await this.submissionSyncPayload(
               submission,
               form.key,
               edgeNodeId,
-            ) as unknown as Prisma.InputJsonValue,
+            )) as unknown as Prisma.InputJsonValue,
           },
         });
       }
 
       return { submission, wasVerified: true };
     });
+
+    if (result.wasVerified && form.paymentEnabled) {
+      const payloadObj = result.submission.payload as Record<string, unknown>;
+      let productId =
+        typeof payloadObj.productId === 'string'
+          ? payloadObj.productId.trim()
+          : undefined;
+
+      if (!productId && form.formProducts.length === 1) {
+        productId = form.formProducts[0].productId;
+      }
+
+      if (productId) {
+        const product = await this.prisma.product.findUnique({
+          where: { id: productId },
+        });
+
+        if (product) {
+          let rawDomain =
+            process.env.DOMAIN || originHost || 'land.sikaap.com';
+          if (
+            rawDomain.includes('localhost') ||
+            rawDomain.startsWith('127.0.0.1')
+          ) {
+            rawDomain = 'land.sikaap.com';
+          }
+          const domain = rawDomain
+            .replace(/^https?:\/\//, '')
+            .replace(/\/$/, '');
+          const returnUrl = `https://${domain}/${form.slug}/verify`;
+
+          const localEdgeNodeId = isEdge() ? null : edgeNodeId;
+          const payment = await this.prisma.payment.create({
+            data: {
+              submissionId: result.submission.id,
+              formId: form.id,
+              productId: product.id,
+              edgeNodeId: localEdgeNodeId,
+              amount: product.price,
+              status: 'PENDING',
+            },
+          });
+
+          const payResult = await this.payping.createPayment({
+            amount: product.price,
+            returnUrl,
+            clientRefId: payment.id,
+            payerIdentity: (result.submission.payload as any)?.[
+              form.otpField || 'mobile'
+            ],
+            description: `پرداخت سفارش ${product.title} (${form.title})`,
+          });
+
+          await this.prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              payCode: payResult.code,
+              clientRefId: payment.id,
+            },
+          });
+
+          return {
+            ok: true,
+            submissionId: result.submission.id,
+            otpStatus: result.submission.otpStatus,
+            paymentUrl: payResult.paymentUrl,
+            code: payResult.code,
+          };
+        }
+      }
+    }
+
+    if (result.wasVerified && !isEdge() && !form.paymentEnabled) {
+      void this.dispatchSubmission(form, result.submission);
+    }
 
     return {
       ok: true,
@@ -370,7 +494,11 @@ export class FormEngineService {
     };
   }
 
-  async submit(key: string, payload: Record<string, unknown>) {
+  async submit(
+    key: string,
+    payload: Record<string, unknown>,
+    originHost?: string,
+  ) {
     const form = await this.getByKey(key);
     if (form.otpEnabled) {
       throw new BadRequestException(
@@ -380,11 +508,139 @@ export class FormEngineService {
 
     this.validateRequiredFields(form.body, payload);
     const edgeNodeId = process.env.EDGE_NODE_ID || null;
+    const localEdgeNodeId = isEdge() ? null : edgeNodeId;
+
+    if (form.paymentEnabled) {
+      let productId =
+        typeof payload.productId === 'string'
+          ? payload.productId.trim()
+          : undefined;
+
+      if (!productId && form.formProducts.length === 1) {
+        productId = form.formProducts[0].productId;
+      }
+
+      if (!productId) {
+        throw new BadRequestException(
+          'ارسال شناسه محصول (productId) جهت پرداخت آنلاین الزامی است',
+        );
+      }
+
+      const product = await this.prisma.product.findUnique({
+        where: { id: productId },
+      });
+      if (!product) {
+        throw new BadRequestException('محصول انتخابی معتبر نیست یا یافت نشد');
+      }
+
+      if (
+        form.formProducts.length > 0 &&
+        !form.formProducts.some((fp) => fp.productId === product.id)
+      ) {
+        throw new BadRequestException(
+          'محصول انتخابی به این فرم اختصاص داده نشده است',
+        );
+      }
+
+      const { submission, payment } = await this.prisma.$transaction(
+        async (tx) => {
+          const created = await tx.formSubmission.create({
+            data: {
+              formId: form.id,
+              edgeNodeId: localEdgeNodeId,
+              payload: payload as Prisma.InputJsonValue,
+              otpStatus: 'NOT_REQUIRED',
+            },
+          });
+
+          const createdPayment = await tx.payment.create({
+            data: {
+              submissionId: created.id,
+              formId: form.id,
+              productId: product.id,
+              edgeNodeId: localEdgeNodeId,
+              amount: product.price,
+              status: 'PENDING',
+            },
+          });
+
+          if (isEdge()) {
+            await tx.outboxEvent.create({
+              data: {
+                eventType: 'form.submission.sync',
+                idempotencyKey: `submission:${created.id}:v:1`,
+                payload: (await this.submissionSyncPayload(
+                  created,
+                  form.key,
+                  edgeNodeId,
+                  createdPayment,
+                )) as unknown as Prisma.InputJsonValue,
+              },
+            });
+          }
+
+          return { submission: created, payment: createdPayment };
+        },
+      );
+
+      let rawDomain =
+        process.env.DOMAIN || originHost || 'land.sikaap.com';
+      if (
+        rawDomain.includes('localhost') ||
+        rawDomain.startsWith('127.0.0.1')
+      ) {
+        rawDomain = 'land.sikaap.com';
+      }
+      const domain = rawDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const returnUrl = `https://${domain}/${form.slug}/verify`;
+
+      const otpField = form.otpField || 'mobile';
+      const payerMobile =
+        typeof payload[otpField] === 'string'
+          ? String(payload[otpField])
+          : typeof payload.mobile === 'string'
+            ? String(payload.mobile)
+            : typeof payload.phone === 'string'
+              ? String(payload.phone)
+              : undefined;
+
+      const payerName =
+        typeof payload.fullName === 'string'
+          ? String(payload.fullName)
+          : typeof payload.name === 'string'
+            ? String(payload.name)
+            : undefined;
+
+      const payResult = await this.payping.createPayment({
+        amount: product.price,
+        returnUrl,
+        clientRefId: payment.id,
+        payerIdentity: payerMobile,
+        payerName,
+        description: `پرداخت سفارش ${product.title} (${form.title})`,
+      });
+
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          payCode: payResult.code,
+          clientRefId: payment.id,
+        },
+      });
+
+      return {
+        ok: true,
+        submissionId: submission.id,
+        paymentUrl: payResult.paymentUrl,
+        code: payResult.code,
+      };
+    }
+
     const submission = await this.prisma.$transaction(async (tx) => {
       const created = await tx.formSubmission.create({
         data: {
           formId: form.id,
-          edgeNodeId,
+          edgeNodeId: localEdgeNodeId,
           payload: payload as Prisma.InputJsonValue,
           otpStatus: 'NOT_REQUIRED',
         },
@@ -394,11 +650,11 @@ export class FormEngineService {
           data: {
             eventType: 'form.submission.sync',
             idempotencyKey: `submission:${created.id}:v:1`,
-            payload: this.submissionSyncPayload(
+            payload: (await this.submissionSyncPayload(
               created,
               form.key,
               edgeNodeId,
-            ) as unknown as Prisma.InputJsonValue,
+            )) as unknown as Prisma.InputJsonValue,
           },
         });
       }
@@ -453,7 +709,7 @@ export class FormEngineService {
     );
   }
 
-  private submissionSyncPayload(
+  private async submissionSyncPayload(
     submission: {
       id: string;
       payload: Prisma.JsonValue;
@@ -464,7 +720,56 @@ export class FormEngineService {
     },
     formKey: string,
     edgeNodeId: string | null,
+    payment?: {
+      id: string;
+      productId: string;
+      amount: number;
+      status: string;
+      payCode?: string | null;
+      refId?: string | null;
+      clientRefId?: string | null;
+      cardNumber?: string | null;
+      cardHashPan?: string | null;
+      errorMessage?: string | null;
+      verifiedAt?: Date | null;
+    } | null,
   ) {
+    let paymentData: any = undefined;
+    if (payment) {
+      paymentData = {
+        id: payment.id,
+        productId: payment.productId,
+        amount: payment.amount,
+        status: payment.status,
+        payCode: payment.payCode || null,
+        refId: payment.refId || null,
+        clientRefId: payment.clientRefId || null,
+        cardNumber: payment.cardNumber || null,
+        cardHashPan: payment.cardHashPan || null,
+        errorMessage: payment.errorMessage || null,
+        verifiedAt: payment.verifiedAt?.toISOString() || null,
+      };
+    } else {
+      const p = await this.prisma.payment.findUnique({
+        where: { submissionId: submission.id },
+      });
+      if (p) {
+        paymentData = {
+          id: p.id,
+          productId: p.productId,
+          amount: p.amount,
+          status: p.status,
+          payCode: p.payCode || null,
+          refId: p.refId || null,
+          clientRefId: p.clientRefId || null,
+          cardNumber: p.cardNumber || null,
+          cardHashPan: p.cardHashPan || null,
+          errorMessage: p.errorMessage || null,
+          verifiedAt: p.verifiedAt?.toISOString() || null,
+        };
+      }
+    }
+
     return {
       idempotencyKey: `submission:${submission.id}:v:${submission.syncVersion}`,
       submissionId: submission.id,
@@ -475,6 +780,7 @@ export class FormEngineService {
       syncVersion: submission.syncVersion,
       createdAt: submission.createdAt.toISOString(),
       verifiedAt: submission.verifiedAt?.toISOString() || null,
+      payment: paymentData,
     };
   }
 
@@ -618,6 +924,8 @@ export class FormEngineService {
     otpLength?: number;
     sendUtmToWebhook?: boolean;
     sendUtmToSheet?: boolean;
+    paymentEnabled?: boolean;
+    formProducts?: Array<{ productId: string }>;
     updatedAt: Date;
   }) {
     await this.outbox.enqueueFormSync({
@@ -640,7 +948,56 @@ export class FormEngineService {
         otpLength: form.otpLength,
         sendUtmToWebhook: form.sendUtmToWebhook,
         sendUtmToSheet: form.sendUtmToSheet,
+        paymentEnabled: form.paymentEnabled,
+        productIds: form.formProducts?.map((fp) => fp.productId) || [],
       },
     });
+  }
+
+  async handlePaymentSuccess(
+    paymentId: string,
+    refId: string,
+    cardNumber?: string,
+    cardHashPan?: string,
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { form: true, submission: true, product: true },
+    });
+    if (!payment) return null;
+
+    const updated = await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'COMPLETED',
+        refId,
+        cardNumber,
+        cardHashPan,
+        verifiedAt: new Date(),
+      },
+      include: { form: true, submission: true, product: true },
+    });
+
+    if (isEdge()) {
+      await this.prisma.outboxEvent.create({
+        data: {
+          eventType: 'form.submission.sync',
+          idempotencyKey: `submission:${payment.submissionId}:payment:${Date.now()}`,
+          payload: (await this.submissionSyncPayload(
+            payment.submission,
+            payment.form.key,
+            process.env.EDGE_NODE_ID || null,
+            updated,
+          )) as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    // پس از تایید موفق پرداخت، لید را به وب‌هوک و گوگل شیت ارسال می‌کنیم
+    if (!isEdge()) {
+      void this.dispatchSubmission(payment.form, payment.submission);
+    }
+
+    return updated;
   }
 }

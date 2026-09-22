@@ -39,7 +39,7 @@ export class LandingApplyService {
   private activeDownload: ActiveDownload | null = null;
   private downloadHistory: DownloadHistory[] = [];
   private readonly maxHistory = 10;
-  
+
   // 1.8 Lock per-slug
   private readonly activeLocks = new Set<string>();
 
@@ -89,8 +89,10 @@ export class LandingApplyService {
 
   async applyLanding(payload: LandingSyncPayload) {
     if (this.activeLocks.has(payload.slug)) {
-       this.logger.log(`Landing ${payload.slug} is already being downloaded, skipping concurrent request.`);
-       return;
+      this.logger.log(
+        `Landing ${payload.slug} is already being downloaded, skipping concurrent request.`,
+      );
+      return;
     }
     this.activeLocks.add(payload.slug);
 
@@ -139,7 +141,7 @@ export class LandingApplyService {
         },
       });
     } finally {
-       this.activeLocks.delete(payload.slug);
+      this.activeLocks.delete(payload.slug);
     }
   }
 
@@ -171,7 +173,7 @@ export class LandingApplyService {
     for (const url of candidates) {
       let attempts = 0;
       const maxAttempts = 3;
-      
+
       while (attempts < maxAttempts) {
         try {
           this.logger.log(`Downloading landing package: ${url}`);
@@ -193,11 +195,13 @@ export class LandingApplyService {
           lastErr = err;
           attempts++;
           const message = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`Download failed (${url}) attempt ${attempts}: ${message}`);
-          
+          this.logger.warn(
+            `Download failed (${url}) attempt ${attempts}: ${message}`,
+          );
+
           if (attempts < maxAttempts) {
-             const delay = Math.min(1000 * (2 ** attempts), 15000);
-             await new Promise(r => setTimeout(r, delay));
+            const delay = Math.min(1000 * 2 ** attempts, 15000);
+            await new Promise((r) => setTimeout(r, delay));
           }
         }
       }
@@ -272,16 +276,17 @@ export class LandingApplyService {
           // Check if payload has a downloadUrl
           let downloadUrl = url;
           if (downloadUrl.includes('?')) {
-             downloadUrl += '&bust=' + Date.now();
+            downloadUrl += '&bust=' + Date.now();
           } else {
-             downloadUrl += '?bust=' + Date.now();
+            downloadUrl += '?bust=' + Date.now();
           }
 
           let currentTimeout = 120_000;
           if (total) {
-              const expectedSpeed = 500 * 1024; // 500 KB/s
-              const smartTimeout = Math.floor((total / expectedSpeed) * 1000) + 30_000;
-              currentTimeout = Math.max(120_000, smartTimeout);
+            const expectedSpeed = 500 * 1024; // 500 KB/s
+            const smartTimeout =
+              Math.floor((total / expectedSpeed) * 1000) + 30_000;
+            currentTimeout = Math.max(120_000, smartTimeout);
           }
 
           const response = await axios.get(downloadUrl, {

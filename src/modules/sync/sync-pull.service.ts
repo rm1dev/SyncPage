@@ -41,6 +41,17 @@ type FormManifestItem = {
   otpLength?: number | null;
   sendUtmToWebhook?: boolean | null;
   sendUtmToSheet?: boolean | null;
+  paymentEnabled?: boolean | null;
+  productIds?: string[] | null;
+};
+
+type ProductManifestItem = {
+  id: string;
+  title: string;
+  price: number;
+  description?: string | null;
+  updatedAt: string;
+  idempotencyKey: string;
 };
 
 type SettingManifestItem = {
@@ -51,9 +62,11 @@ type SettingManifestItem = {
 type Manifest = {
   landings?: ManifestItem[];
   forms?: FormManifestItem[];
+  products?: ProductManifestItem[];
   settings?: SettingManifestItem[];
   deletedLandings?: string[];
   deletedForms?: string[];
+  deletedProducts?: string[];
 };
 
 @Injectable()
@@ -65,7 +78,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private lastETag: string | null = null;
   private lastSyncTimestamp: string | null = null;
   private syncStats = { success: 0, failed: 0, lastRun: null as string | null };
-  
+
   private httpClient: AxiosInstance;
 
   constructor(
@@ -85,23 +98,31 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (!isEdge()) return;
-    
+
     if (process.env.SYNC_PULL_ENABLED === '0') {
       this.logger.log('HTTP sync pull disabled (SYNC_PULL_ENABLED=0)');
       return;
     }
-    
+
     const fastMs = this.config.get<number>('syncPullFastMs') || 10000;
     const fullMs = this.config.get<number>('syncPullFullMs') || 300000;
-    
-    this.logger.log(`HTTP sync pull enabled (Fast: ${fastMs}ms, Full: ${fullMs}ms)`);
-    
+
+    this.logger.log(
+      `HTTP sync pull enabled (Fast: ${fastMs}ms, Full: ${fullMs}ms)`,
+    );
+
     // Initial fetch (Full)
     void this.tick(true);
-    
+
     // 1.8 Smart Interval (Fast vs Full)
-    this.timerFast = setInterval(() => void this.tick(false), Math.max(5000, fastMs));
-    this.timerFull = setInterval(() => void this.tick(true), Math.max(60000, fullMs));
+    this.timerFast = setInterval(
+      () => void this.tick(false),
+      Math.max(5000, fastMs),
+    );
+    this.timerFull = setInterval(
+      () => void this.tick(true),
+      Math.max(60000, fullMs),
+    );
   }
 
   onModuleDestroy() {
@@ -118,7 +139,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
         // 304 Not Modified -> Skip
         return;
       }
-      
+
       if (manifest.settings) {
         for (const s of manifest.settings) {
           try {
@@ -128,36 +149,44 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
               update: { value: s.value },
             });
           } catch (err) {
-            this.logger.error(`HTTP pull setting apply failed (${s.key}): ${err}`);
+            this.logger.error(
+              `HTTP pull setting apply failed (${s.key}): ${err}`,
+            );
           }
         }
       }
-      
+
+      if (manifest.products) {
+        await this.syncProducts(manifest.products);
+      }
       await this.syncForms(manifest.forms);
-      await this.processDeletions(manifest.deletedForms || [], manifest.deletedLandings || []);
-      
+      await this.processDeletions(
+        manifest.deletedForms || [],
+        manifest.deletedLandings || [],
+        manifest.deletedProducts || [],
+      );
+
       // 1.6 Download Queue (Concurrent max 2)
       const maxConcurrent = this.config.get<number>('syncPullConcurrent') || 2;
       const landings = manifest.landings ?? [];
       for (let i = 0; i < landings.length; i += maxConcurrent) {
         const batch = landings.slice(i, i + maxConcurrent);
-        await Promise.allSettled(batch.map(item => this.syncOne(item)));
+        await Promise.allSettled(batch.map((item) => this.syncOne(item)));
       }
-      
+
       // If it was a full sync, do a local cleanup just in case tombstone was missed
       if (isFullSync) {
         await this.cleanupDeletedLandings(manifest.landings ?? []);
       }
       this.syncStats.success++;
       this.syncStats.lastRun = new Date().toISOString();
-      
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`HTTP sync pull failed: ${message}`);
       this.syncStats.failed++;
       this.syncStats.lastRun = new Date().toISOString();
       // 1.9 ETag Reset on error
-      this.lastETag = null; 
+      this.lastETag = null;
     } finally {
       this.running = false;
     }
@@ -170,8 +199,14 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
   private manifestUrls(): string[] {
     const path = '/api/internal/sync/manifest';
     const urls: string[] = [];
-    const master = (this.config.get<string>('masterInternalUrl') || '').replace(/\/$/, '');
-    const pub = (this.config.get<string>('publicBaseUrl') || '').replace(/\/$/, '');
+    const master = (this.config.get<string>('masterInternalUrl') || '').replace(
+      /\/$/,
+      '',
+    );
+    const pub = (this.config.get<string>('publicBaseUrl') || '').replace(
+      /\/$/,
+      '',
+    );
     if (master) urls.push(`${master}${path}`);
     if (pub && pub !== master) urls.push(`${pub}${path}`);
     return urls;
@@ -182,14 +217,14 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
     if (!urls.length) {
       throw new Error('MASTER_INTERNAL_URL / PUBLIC_BASE_URL not set');
     }
-    
+
     let lastErr: unknown;
-    
+
     // 1.5 Retry with Exponential Backoff
     for (const url of urls) {
       let attempts = 0;
       const maxAttempts = 3;
-      
+
       while (attempts < maxAttempts) {
         try {
           const reqUrl = new URL(url);
@@ -201,72 +236,124 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
           } else {
             fullStr = '1';
           }
-          
+
           const headers: Record<string, string> = {
-            'Authorization': `Bearer ${this.config.get<string>('syncHttpToken')}`,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${this.config.get<string>('syncHttpToken')}`,
+            'Content-Type': 'application/json',
           };
-          
+
           if (!isFullSync && this.lastETag) {
             headers['If-None-Match'] = this.lastETag;
           }
 
-          const response = await this.httpClient.post<Manifest>(reqUrl.toString(), {
-            since: sinceStr,
-            full: fullStr,
-            t: String(Date.now())
-          }, {
-            headers,
-            timeout: 120_000,
-            validateStatus: (s: number) => s === 200 || s === 304,
-          });
-          
+          const response = await this.httpClient.post<Manifest>(
+            reqUrl.toString(),
+            {
+              since: sinceStr,
+              full: fullStr,
+              t: String(Date.now()),
+            },
+            {
+              headers,
+              timeout: 120_000,
+              validateStatus: (s: number) => s === 200 || s === 304,
+            },
+          );
+
           if (response.status === 304) {
-             return null; // Not modified
+            return null; // Not modified
           }
-          
+
           if (response.headers['etag']) {
-             this.lastETag = response.headers['etag'];
+            this.lastETag = response.headers['etag'];
           }
-          
+
           this.lastSyncTimestamp = new Date().toISOString();
-          
+
           const data = response.data;
           return {
             landings: Array.isArray(data?.landings) ? data.landings : [],
             forms: Array.isArray(data?.forms) ? data.forms : undefined,
             settings: Array.isArray(data?.settings) ? data.settings : undefined,
-            deletedLandings: Array.isArray(data?.deletedLandings) ? data.deletedLandings : [],
-            deletedForms: Array.isArray(data?.deletedForms) ? data.deletedForms : [],
+            deletedLandings: Array.isArray(data?.deletedLandings)
+              ? data.deletedLandings
+              : [],
+            deletedForms: Array.isArray(data?.deletedForms)
+              ? data.deletedForms
+              : [],
           };
         } catch (err) {
           lastErr = err;
           attempts++;
           if (attempts < maxAttempts) {
-             const delay = Math.min(1000 * (2 ** attempts), 15000); // 2s, 4s, 8s
-             await new Promise(r => setTimeout(r, delay));
+            const delay = Math.min(1000 * 2 ** attempts, 15000); // 2s, 4s, 8s
+            await new Promise((r) => setTimeout(r, delay));
           }
         }
       }
     }
-    
-    throw lastErr instanceof Error ? lastErr : new Error('Failed to fetch sync manifest');
+
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error('Failed to fetch sync manifest');
   }
 
-  private async processDeletions(deletedForms: string[], deletedLandings: string[]) {
-     for (const key of deletedForms) {
-        try {
-           await this.prisma.form.deleteMany({ where: { key } });
-           this.logger.log(`Form removed via Tombstone: ${key}`);
-        } catch(e) {}
-     }
-     for (const slug of deletedLandings) {
-        try {
-           const idempotencyKey = `landing:${slug}:delete:tombstone:${Date.now()}`;
-           await this.apply.deleteLanding({ slug, idempotencyKey });
-           this.logger.log(`Landing removed via Tombstone: ${slug}`);
-        } catch(e) {}
-     }
+  private async processDeletions(
+    deletedForms: string[],
+    deletedLandings: string[],
+    deletedProducts: string[] = [],
+  ) {
+    for (const key of deletedForms) {
+      try {
+        await this.prisma.form.deleteMany({ where: { key } });
+        this.logger.log(`Form removed via Tombstone: ${key}`);
+      } catch (e) {}
+    }
+    for (const slug of deletedLandings) {
+      try {
+        const idempotencyKey = `landing:${slug}:delete:tombstone:${Date.now()}`;
+        await this.apply.deleteLanding({ slug, idempotencyKey });
+        this.logger.log(`Landing removed via Tombstone: ${slug}`);
+      } catch (e) {}
+    }
+    for (const id of deletedProducts) {
+      try {
+        await this.prisma.product.deleteMany({ where: { id } });
+        this.logger.log(`Product removed via Tombstone: ${id}`);
+      } catch (e) {}
+    }
+  }
+
+  private async syncProducts(products: ProductManifestItem[] | undefined) {
+    if (!Array.isArray(products)) return;
+
+    for (const p of products) {
+      if (!p?.id || !p.idempotencyKey) continue;
+      try {
+        if (await this.apply.alreadyProcessed(p.idempotencyKey)) continue;
+        await this.prisma.product.upsert({
+          where: { id: p.id },
+          create: {
+            id: p.id,
+            title: p.title,
+            price: p.price,
+            description: p.description,
+          },
+          update: {
+            title: p.title,
+            price: p.price,
+            description: p.description,
+          },
+        });
+        await this.apply.markProcessed(p.idempotencyKey);
+        this.logger.log(`Product synced via HTTP pull: ${p.title} (${p.id})`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `HTTP pull product apply failed (${p.id}): ${message}`,
+        );
+      }
+    }
   }
 
   private async syncForms(forms: FormManifestItem[] | undefined) {
@@ -290,7 +377,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
               })
             ).id
           : null;
-        await this.prisma.form.upsert({
+        const formRecord = await this.prisma.form.upsert({
           where: { key: f.key },
           create: {
             id: f.id,
@@ -310,6 +397,7 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpLength: f.otpLength || 5,
             sendUtmToWebhook: f.sendUtmToWebhook ?? true,
             sendUtmToSheet: f.sendUtmToSheet ?? true,
+            paymentEnabled: f.paymentEnabled || false,
           },
           update: {
             title: f.title,
@@ -329,8 +417,25 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
             otpLength: f.otpLength || 5,
             sendUtmToWebhook: f.sendUtmToWebhook ?? true,
             sendUtmToSheet: f.sendUtmToSheet ?? true,
+            paymentEnabled: f.paymentEnabled || false,
           },
         });
+
+        if (Array.isArray(f.productIds)) {
+          await this.prisma.formProduct.deleteMany({
+            where: { formId: formRecord.id },
+          });
+          if (f.productIds.length > 0) {
+            await this.prisma.formProduct.createMany({
+              data: f.productIds.map((productId) => ({
+                formId: formRecord.id,
+                productId,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
         await this.apply.markProcessed(f.idempotencyKey);
         this.logger.log(`Form synced via HTTP pull: ${f.key}`);
       } catch (err) {
@@ -350,7 +455,9 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
         if (!activeSlugs.has(local.slug)) {
           const idempotencyKey = `landing:${local.slug}:delete:sync-pull:${Date.now()}`;
           await this.apply.deleteLanding({ slug: local.slug, idempotencyKey });
-          this.logger.log(`Landing removed via HTTP full reconcile: ${local.slug}`);
+          this.logger.log(
+            `Landing removed via HTTP full reconcile: ${local.slug}`,
+          );
         }
       }
     } catch (err) {
@@ -361,55 +468,74 @@ export class SyncPullService implements OnModuleInit, OnModuleDestroy {
 
   private async syncOne(item: ManifestItem) {
     // Force log to see what's happening
-    this.logger.log(`[DEBUG] Checking landing from manifest: ${item?.slug} (v${item?.version})`);
-    
+    this.logger.log(
+      `[DEBUG] Checking landing from manifest: ${item?.slug} (v${item?.version})`,
+    );
+
     if (!item?.slug || !item?.checksum || !item?.downloadUrl) {
-        this.logger.warn(`Invalid manifest item: ${JSON.stringify(item)}`);
-        return;
+      this.logger.warn(`Invalid manifest item: ${JSON.stringify(item)}`);
+      return;
     }
-    
+
     try {
-       const already = await this.apply.alreadyProcessed(item.idempotencyKey);
-       if (already) {
-           this.logger.log(`[DEBUG] Skipping ${item.slug} v${item.version} - alreadyProcessed is TRUE for key ${item.idempotencyKey}`);
-           return;
-       }
-       
-       const local = await this.prisma.landing.findUnique({ where: { slug: item.slug } });
-       if (local && local.checksum === item.checksum && local.version >= item.version) {
-         this.logger.log(`[DEBUG] Skipping ${item.slug} - local version (${local.version}) is up to date with manifest (${item.version})`);
-         await this.apply.markProcessed(item.idempotencyKey);
-         return;
-       }
-       
-       // بازنویسی لینک دانلود با استفاده از آدرس امنِ همین نود
-       const masterInternalUrl = (this.config.get<string>('masterInternalUrl') || '').replace(/\/$/, '');
-       let finalDownloadUrl = item.downloadUrl;
-       if (masterInternalUrl) {
-         try {
-           const path = new URL(item.downloadUrl).pathname;
-           finalDownloadUrl = `${masterInternalUrl}${path}`;
-         } catch(e) {}
-       }
-       
-       item.downloadUrl = finalDownloadUrl;
-       if (item.downloadUrlFallback) {
-         try {
-           const pathFallback = new URL(item.downloadUrlFallback).pathname;
-           item.downloadUrlFallback = `${masterInternalUrl}${pathFallback}`;
-         } catch(e) {}
-       }
-       
-       this.logger.log(`Will apply landing: ${item.slug} v${item.version} (Local: v${local?.version || 'none'}) from ${finalDownloadUrl}`);
-       await this.apply.applyLanding(item as LandingSyncPayload);
-       await this.apply.markProcessed(item.idempotencyKey);
-       this.logger.log(`Landing synced via HTTP pull: ${item.slug} v${item.version}`);
-       
+      const already = await this.apply.alreadyProcessed(item.idempotencyKey);
+      if (already) {
+        this.logger.log(
+          `[DEBUG] Skipping ${item.slug} v${item.version} - alreadyProcessed is TRUE for key ${item.idempotencyKey}`,
+        );
+        return;
+      }
+
+      const local = await this.prisma.landing.findUnique({
+        where: { slug: item.slug },
+      });
+      if (
+        local &&
+        local.checksum === item.checksum &&
+        local.version >= item.version
+      ) {
+        this.logger.log(
+          `[DEBUG] Skipping ${item.slug} - local version (${local.version}) is up to date with manifest (${item.version})`,
+        );
+        await this.apply.markProcessed(item.idempotencyKey);
+        return;
+      }
+
+      // بازنویسی لینک دانلود با استفاده از آدرس امنِ همین نود
+      const masterInternalUrl = (
+        this.config.get<string>('masterInternalUrl') || ''
+      ).replace(/\/$/, '');
+      let finalDownloadUrl = item.downloadUrl;
+      if (masterInternalUrl) {
+        try {
+          const path = new URL(item.downloadUrl).pathname;
+          finalDownloadUrl = `${masterInternalUrl}${path}`;
+        } catch (e) {}
+      }
+
+      item.downloadUrl = finalDownloadUrl;
+      if (item.downloadUrlFallback) {
+        try {
+          const pathFallback = new URL(item.downloadUrlFallback).pathname;
+          item.downloadUrlFallback = `${masterInternalUrl}${pathFallback}`;
+        } catch (e) {}
+      }
+
+      this.logger.log(
+        `Will apply landing: ${item.slug} v${item.version} (Local: v${local?.version || 'none'}) from ${finalDownloadUrl}`,
+      );
+      await this.apply.applyLanding(item);
+      await this.apply.markProcessed(item.idempotencyKey);
+      this.logger.log(
+        `Landing synced via HTTP pull: ${item.slug} v${item.version}`,
+      );
     } catch (err) {
-       const message = err instanceof Error ? err.message : String(err);
-       this.logger.error(`HTTP pull landing apply failed (${item.slug} v${item.version}): ${message}`);
-       // ETag should be reset so it retries later
-       this.lastETag = null; 
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `HTTP pull landing apply failed (${item.slug} v${item.version}): ${message}`,
+      );
+      // ETag should be reset so it retries later
+      this.lastETag = null;
     }
   }
 }

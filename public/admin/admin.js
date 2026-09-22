@@ -146,8 +146,25 @@ document.addEventListener('DOMContentLoaded', () => {
         settings.style.display = /** @type {HTMLInputElement} */ (this).checked
           ? 'block'
           : 'none';
+      renderSnippets();
     });
   }
+
+  const paymentCheckbox = document.getElementById('paymentEnabled');
+  if (paymentCheckbox) {
+    paymentCheckbox.addEventListener('change', function () {
+      const settings = document.getElementById('payment-settings');
+      if (settings)
+        settings.style.display = /** @type {HTMLInputElement} */ (this).checked
+          ? 'block'
+          : 'none';
+      renderSnippets();
+    });
+  }
+
+  document.querySelectorAll('.product-item-checkbox').forEach((cb) => {
+    cb.addEventListener('change', renderSnippets);
+  });
 
   // ===================================================================
   //  FORM-EDIT: Visual Field Builder
@@ -795,6 +812,19 @@ function buildLandingFormHtml(formId, fields) {
       `  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`,
     );
   }
+
+  const paymentEnabled = /** @type {HTMLInputElement} */ (
+    document.getElementById('paymentEnabled')
+  )?.checked;
+  if (paymentEnabled) {
+    const checkedProduct = /** @type {HTMLInputElement} */ (
+      document.querySelector('.product-item-checkbox:checked')
+    );
+    const firstPid = checkedProduct ? checkedProduct.value : 'PRODUCT_ID_HERE';
+    parts.push(`  <!-- شناسه محصول انتخابی جهت پرداخت آنلاین -->`);
+    parts.push(`  <input type="hidden" name="productId" value="${escapeAttr(firstPid)}" />`);
+  }
+
   parts.push('  <button type="submit">Submit</button>');
   parts.push('</form>');
   return parts.join('\n');
@@ -853,6 +883,11 @@ function buildLandingFormScript(formId, formKey) {
       alert(err.message || 'خطا در ثبت فرم');
       return;
     }
+    var resData = await res.json().catch(function () { return {}; });
+    if (resData.paymentUrl) {
+      window.location.href = resData.paymentUrl;
+      return;
+    }
     alert('فرم با موفقیت ثبت شد');
     form.reset();
   });
@@ -907,6 +942,12 @@ function buildLandingFormScript(formId, formKey) {
       if (!verifyRes.ok) {
         var verifyErr = await verifyRes.json().catch(function () { return {}; });
         alert(verifyErr.message || 'کد تایید نامعتبر یا منقضی شده است');
+        return;
+      }
+
+      var verifyData = await verifyRes.json().catch(function () { return {}; });
+      if (verifyData.paymentUrl) {
+        window.location.href = verifyData.paymentUrl;
         return;
       }
 

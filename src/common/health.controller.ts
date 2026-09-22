@@ -33,10 +33,8 @@ export class HealthController {
       role === 'EDGE' && this.landingApply
         ? this.landingApply.getDownloadHistory()
         : [];
-    const pullStats = 
-      role === 'EDGE' && this.syncPull
-        ? this.syncPull.getStats()
-        : null;
+    const pullStats =
+      role === 'EDGE' && this.syncPull ? this.syncPull.getStats() : null;
 
     // واکشی لیست لندینگ‌ها و نسخه آن‌ها از پوشه روی دیسک
     const edgeLandings: any[] = [];

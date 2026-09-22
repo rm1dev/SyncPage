@@ -327,13 +327,13 @@ export class DeploymentService implements OnModuleInit {
           ? 'COMPLETED'
           : !probe?.ok
             ? 'UNREACHABLE'
-            : (active)
+            : active
               ? 'DEPLOYING'
               : entry.status;
         const lastError = !probe?.ok
           ? 'نود از طریق health در دسترس نیست'
-          : isComplete 
-            ? null 
+          : isComplete
+            ? null
             : 'در حال همگام‌سازی از طریق HTTP Pull';
         if (status !== entry.status || lastError !== entry.lastError) {
           await this.prisma.syncOperationNode.update({
@@ -466,14 +466,16 @@ export class DeploymentService implements OnModuleInit {
 
     let sinceDate: Date | undefined = undefined;
     if (!isFull && sinceStr) {
-       const parsed = new Date(sinceStr);
-       if (!isNaN(parsed.getTime())) {
-          // Add overlap window: 60s
-          sinceDate = new Date(parsed.getTime() - 60000);
-       }
+      const parsed = new Date(sinceStr);
+      if (!isNaN(parsed.getTime())) {
+        // Add overlap window: 60s
+        sinceDate = new Date(parsed.getTime() - 60000);
+      }
     }
 
-    const whereUpdated = sinceDate ? { updatedAt: { gte: sinceDate } } : undefined;
+    const whereUpdated = sinceDate
+      ? { updatedAt: { gte: sinceDate } }
+      : undefined;
 
     const rows = await this.prisma.landing.findMany({
       where: { status: 'ACTIVE', ...whereUpdated },
@@ -483,18 +485,34 @@ export class DeploymentService implements OnModuleInit {
     const forms = await this.prisma.form.findMany({
       where: whereUpdated,
       orderBy: { updatedAt: 'desc' },
-      include: { category: true },
+      include: { category: true, formProducts: true },
+    });
+
+    const products = await this.prisma.product.findMany({
+      where: whereUpdated,
+      orderBy: { updatedAt: 'desc' },
     });
 
     const settings = await this.prisma.systemSetting.findMany();
 
-    const tombstones = isFull ? [] : await this.prisma.syncTombstone.findMany({
-      where: sinceDate ? { deletedAt: { gte: sinceDate } } : undefined,
-    });
+    const tombstones = isFull
+      ? []
+      : await this.prisma.syncTombstone.findMany({
+          where: sinceDate ? { deletedAt: { gte: sinceDate } } : undefined,
+        });
 
-    const deletedLandings = tombstones.filter(t => t.entityType === 'LANDING').map(t => t.entityKey);
-    const deletedForms = tombstones.filter(t => t.entityType === 'FORM').map(t => t.entityKey);
-    const deletedSettings = tombstones.filter(t => t.entityType === 'SETTING').map(t => t.entityKey);
+    const deletedLandings = tombstones
+      .filter((t) => t.entityType === 'LANDING')
+      .map((t) => t.entityKey);
+    const deletedForms = tombstones
+      .filter((t) => t.entityType === 'FORM')
+      .map((t) => t.entityKey);
+    const deletedSettings = tombstones
+      .filter((t) => t.entityType === 'SETTING')
+      .map((t) => t.entityKey);
+    const deletedProducts = tombstones
+      .filter((t) => t.entityType === 'PRODUCT')
+      .map((t) => t.entityKey);
 
     return {
       landings: rows.map((row) => ({
@@ -525,8 +543,18 @@ export class DeploymentService implements OnModuleInit {
         otpLength: f.otpLength,
         sendUtmToWebhook: f.sendUtmToWebhook,
         sendUtmToSheet: f.sendUtmToSheet,
+        paymentEnabled: f.paymentEnabled,
+        productIds: f.formProducts?.map((fp) => fp.productId) || [],
         updatedAt: f.updatedAt.toISOString(),
         idempotencyKey: `form:${f.key}:${f.updatedAt.getTime()}`,
+      })),
+      products: products.map((p) => ({
+        id: p.id,
+        title: p.title,
+        price: p.price,
+        description: p.description,
+        updatedAt: p.updatedAt.toISOString(),
+        idempotencyKey: `product:${p.id}:${p.updatedAt.getTime()}`,
       })),
       settings: settings.map((s) => ({
         key: s.key,
@@ -535,6 +563,7 @@ export class DeploymentService implements OnModuleInit {
       deletedLandings,
       deletedForms,
       deletedSettings,
+      deletedProducts,
     };
   }
 }

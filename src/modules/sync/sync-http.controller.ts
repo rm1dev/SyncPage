@@ -40,14 +40,16 @@ export class SyncHttpController {
 
   @Post('api/internal/sync/submissions/batch')
   @UseGuards(SyncAuthGuard)
-  async receiveSubmissionBatch(@Body() body: { items: Partial<FormSubmissionSyncPayload>[] }) {
+  async receiveSubmissionBatch(
+    @Body() body: { items: Partial<FormSubmissionSyncPayload>[] },
+  ) {
     if (!isMaster()) {
       throw new NotFoundException('Not available on this node');
     }
     if (!body || !Array.isArray(body.items)) {
       throw new BadRequestException('items array is required');
     }
-    
+
     // limit batch size to 20
     const items = body.items.slice(0, 20);
     const results = [];
@@ -114,12 +116,23 @@ export class SyncHttpController {
     const isNewer = !existing || payload.syncVersion! > existing.syncVersion;
 
     if (isNewer) {
+      let edgeNodeIdToSave = payload.edgeNodeId || null;
+      if (edgeNodeIdToSave) {
+        const nodeExists = await this.prisma.edgeNode.findUnique({
+          where: { id: edgeNodeIdToSave },
+          select: { id: true },
+        });
+        if (!nodeExists) {
+          edgeNodeIdToSave = null;
+        }
+      }
+
       await this.prisma.formSubmission.upsert({
         where: { id: payload.submissionId },
         create: {
           id: payload.submissionId,
           formId: form.id,
-          edgeNodeId: payload.edgeNodeId || null,
+          edgeNodeId: edgeNodeIdToSave,
           payload: payloadData as Prisma.InputJsonValue,
           otpStatus: payload.otpStatus,
           syncVersion: payload.syncVersion,
@@ -127,12 +140,44 @@ export class SyncHttpController {
           verifiedAt: payload.verifiedAt ? new Date(payload.verifiedAt) : null,
         },
         update: {
-          edgeNodeId: payload.edgeNodeId || null,
+          edgeNodeId: edgeNodeIdToSave,
           otpStatus: payload.otpStatus,
           syncVersion: payload.syncVersion,
           verifiedAt: payload.verifiedAt ? new Date(payload.verifiedAt) : null,
         },
       });
+
+      if (payload.payment) {
+        const p = payload.payment;
+        await this.prisma.payment.upsert({
+          where: { submissionId: payload.submissionId },
+          create: {
+            id: p.id,
+            submissionId: payload.submissionId,
+            formId: form.id,
+            productId: p.productId,
+            edgeNodeId: edgeNodeIdToSave,
+            amount: p.amount,
+            status: p.status as any,
+            payCode: p.payCode || null,
+            refId: p.refId || null,
+            clientRefId: p.clientRefId || null,
+            cardNumber: p.cardNumber || null,
+            cardHashPan: p.cardHashPan || null,
+            errorMessage: p.errorMessage || null,
+            verifiedAt: p.verifiedAt ? new Date(p.verifiedAt) : null,
+          },
+          update: {
+            status: p.status as any,
+            payCode: p.payCode || null,
+            refId: p.refId || null,
+            cardNumber: p.cardNumber || null,
+            cardHashPan: p.cardHashPan || null,
+            errorMessage: p.errorMessage || null,
+            verifiedAt: p.verifiedAt ? new Date(p.verifiedAt) : null,
+          },
+        });
+      }
     }
 
     await this.landingApply.markProcessed(payload.idempotencyKey);
@@ -140,8 +185,12 @@ export class SyncHttpController {
       `Form submission received via HTTP push: ${payload.submissionId}`,
     );
 
-    // به‌روزرسانی تایید OTP نباید لید را دوباره به وب‌هوک/شیت ارسال کند.
-    if (!existing && isNewer) {
+    // ارسال به وب‌هوک و گوگل شیت
+    const shouldDispatch = form.paymentEnabled
+      ? payload.payment?.status === 'COMPLETED'
+      : !existing && isNewer;
+
+    if (shouldDispatch) {
       await this.webhook.dispatch(form, {
         id: payload.submissionId,
         payload: payloadData,

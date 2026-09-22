@@ -325,12 +325,13 @@ export class NodesService {
         // چک اتصال نود به صف RabbitMQ
         const rmq = data.rabbitmq as
           { ok?: boolean; queue?: string; error?: string } | undefined;
-          
+
         const syncMode = this.config.get<string>('syncMode') || 'auto';
-        
+
         if (syncMode !== 'http') {
           if (!rmq || typeof rmq.ok !== 'boolean') {
-            const msg = 'وضعیت RabbitMQ در health گزارش نشده — نود را آپدیت کنید';
+            const msg =
+              'وضعیت RabbitMQ در health گزارش نشده — نود را آپدیت کنید';
             const updated = await this.prisma.edgeNode.update({
               where: { id },
               data: {
@@ -403,7 +404,10 @@ export class NodesService {
             status: EdgeNodeStatus.ONLINE,
             lastSeenAt: new Date(),
             lastError: null,
-            rabbitStatus: syncMode === 'http' ? EdgeNodeStatus.ONLINE : EdgeNodeStatus.ONLINE,
+            rabbitStatus:
+              syncMode === 'http'
+                ? EdgeNodeStatus.ONLINE
+                : EdgeNodeStatus.ONLINE,
             rabbitLastError: null,
           },
         });

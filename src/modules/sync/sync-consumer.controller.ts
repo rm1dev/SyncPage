@@ -48,13 +48,15 @@ export class SyncConsumerController {
         channel.ack(originalMsg);
         return;
       }
-      
+
       // Additional safety check to prevent infinite loops from same message
       const ackKey = `sync-ack-${payload.idempotencyKey}`;
       const globalAny = global as any;
       globalAny[ackKey] = (globalAny[ackKey] || 0) + 1;
       if (globalAny[ackKey] > 5) {
-        this.logger.error(`Too many failures for ${payload.idempotencyKey}. Dropping message to prevent infinite loop.`);
+        this.logger.error(
+          `Too many failures for ${payload.idempotencyKey}. Dropping message to prevent infinite loop.`,
+        );
         await this.landingApply.markProcessed(payload.idempotencyKey);
         channel.ack(originalMsg);
         return;
@@ -177,6 +179,7 @@ export class SyncConsumerController {
             otpLength: payload.form.otpLength || 5,
             sendUtmToWebhook: payload.form.sendUtmToWebhook ?? true,
             sendUtmToSheet: payload.form.sendUtmToSheet ?? true,
+            paymentEnabled: payload.form.paymentEnabled || false,
           },
           update: {
             title: payload.form.title,
@@ -196,13 +199,100 @@ export class SyncConsumerController {
             otpLength: payload.form.otpLength || 5,
             sendUtmToWebhook: payload.form.sendUtmToWebhook ?? true,
             sendUtmToSheet: payload.form.sendUtmToSheet ?? true,
+            paymentEnabled: payload.form.paymentEnabled || false,
+          },
+        });
+
+        if (Array.isArray(payload.form.productIds)) {
+          const formRecord = await this.prisma.form.findUnique({
+            where: { key: payload.form.key },
+          });
+          if (formRecord) {
+            await this.prisma.formProduct.deleteMany({
+              where: { formId: formRecord.id },
+            });
+            if (payload.form.productIds.length > 0) {
+              await this.prisma.formProduct.createMany({
+                data: payload.form.productIds.map((productId) => ({
+                  formId: formRecord.id,
+                  productId,
+                })),
+                skipDuplicates: true,
+              });
+            }
+          }
+        }
+      }
+
+      await this.landingApply.markProcessed(payload.idempotencyKey);
+      this.logger.log(
+        `Form synced on edge: ${payload.key} (${payload.action})`,
+      );
+      channel.ack(originalMsg);
+    } catch (err) {
+      this.fail(err, channel, originalMsg);
+    }
+  }
+
+  @EventPattern('product.sync')
+  async handleProductSync(
+    @Payload()
+    payload: {
+      idempotencyKey: string;
+      action: 'upsert' | 'delete';
+      id: string;
+      product?: {
+        id: string;
+        title: string;
+        price: number;
+        description: string | null;
+      };
+    },
+    @Ctx() context: RmqContext,
+  ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+
+    try {
+      if (!isEdge()) {
+        this.logger.warn('Ignoring product.sync on non-EDGE node');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (!payload?.idempotencyKey || !payload.id || !payload.action) {
+        this.logger.error('Invalid product.sync payload');
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (await this.landingApply.alreadyProcessed(payload.idempotencyKey)) {
+        channel.ack(originalMsg);
+        return;
+      }
+
+      if (payload.action === 'delete') {
+        await this.prisma.product.deleteMany({ where: { id: payload.id } });
+      } else if (payload.product) {
+        await this.prisma.product.upsert({
+          where: { id: payload.product.id },
+          create: {
+            id: payload.product.id,
+            title: payload.product.title,
+            price: payload.product.price,
+            description: payload.product.description,
+          },
+          update: {
+            title: payload.product.title,
+            price: payload.product.price,
+            description: payload.product.description,
           },
         });
       }
 
       await this.landingApply.markProcessed(payload.idempotencyKey);
       this.logger.log(
-        `Form synced on edge: ${payload.key} (${payload.action})`,
+        `Product synced on edge: ${payload.id} (${payload.action})`,
       );
       channel.ack(originalMsg);
     } catch (err) {
@@ -303,12 +393,23 @@ export class SyncConsumerController {
         !existing || payloadRaw.syncVersion > existing.syncVersion;
 
       if (isNewer) {
+        let edgeNodeIdToSave = payloadRaw.edgeNodeId || null;
+        if (edgeNodeIdToSave) {
+          const nodeExists = await this.prisma.edgeNode.findUnique({
+            where: { id: edgeNodeIdToSave },
+            select: { id: true },
+          });
+          if (!nodeExists) {
+            edgeNodeIdToSave = null;
+          }
+        }
+
         await this.prisma.formSubmission.upsert({
           where: { id: payloadRaw.submissionId },
           create: {
             id: payloadRaw.submissionId,
             formId: form.id,
-            edgeNodeId: payloadRaw.edgeNodeId || null,
+            edgeNodeId: edgeNodeIdToSave,
             payload: payload as Prisma.InputJsonValue,
             otpStatus: payloadRaw.otpStatus,
             syncVersion: payloadRaw.syncVersion,
@@ -318,7 +419,7 @@ export class SyncConsumerController {
               : null,
           },
           update: {
-            edgeNodeId: payloadRaw.edgeNodeId || null,
+            edgeNodeId: edgeNodeIdToSave,
             otpStatus: payloadRaw.otpStatus,
             syncVersion: payloadRaw.syncVersion,
             verifiedAt: payloadRaw.verifiedAt
@@ -326,6 +427,38 @@ export class SyncConsumerController {
               : null,
           },
         });
+
+        if (payloadRaw.payment) {
+          const p = payloadRaw.payment;
+          await this.prisma.payment.upsert({
+            where: { submissionId: payloadRaw.submissionId },
+            create: {
+              id: p.id,
+              submissionId: payloadRaw.submissionId,
+              formId: form.id,
+              productId: p.productId,
+              edgeNodeId: edgeNodeIdToSave,
+              amount: p.amount,
+              status: p.status as any,
+              payCode: p.payCode || null,
+              refId: p.refId || null,
+              clientRefId: p.clientRefId || null,
+              cardNumber: p.cardNumber || null,
+              cardHashPan: p.cardHashPan || null,
+              errorMessage: p.errorMessage || null,
+              verifiedAt: p.verifiedAt ? new Date(p.verifiedAt) : null,
+            },
+            update: {
+              status: p.status as any,
+              payCode: p.payCode || null,
+              refId: p.refId || null,
+              cardNumber: p.cardNumber || null,
+              cardHashPan: p.cardHashPan || null,
+              errorMessage: p.errorMessage || null,
+              verifiedAt: p.verifiedAt ? new Date(p.verifiedAt) : null,
+            },
+          });
+        }
       }
 
       await this.landingApply.markProcessed(payloadRaw.idempotencyKey);
@@ -333,8 +466,12 @@ export class SyncConsumerController {
         `Form submission synced on master: ${payloadRaw.submissionId}`,
       );
 
-      // یک لید فقط در زمان ایجاد به یکپارچه‌سازی‌ها ارسال می‌شود؛ تغییر OTP رکورد تکراری نمی‌سازد.
-      if (!existing && isNewer) {
+      // فرم دارای پرداخت فقط در صورت پرداخت موفق ارسال می‌شود
+      const shouldDispatch = form.paymentEnabled
+        ? payloadRaw.payment?.status === 'COMPLETED'
+        : !existing && isNewer;
+
+      if (shouldDispatch) {
         await this.webhook.dispatch(form, {
           id: payloadRaw.submissionId,
           payload,
@@ -365,13 +502,13 @@ export class SyncConsumerController {
   ) {
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`Sync failed: ${message}`);
-    
+
     // Check if it's a checksum mismatch or another non-recoverable error
     if (message.includes('Checksum mismatch')) {
-       this.logger.error(`Non-recoverable error: dropping message.`);
-       channel.ack(originalMsg);
+      this.logger.error(`Non-recoverable error: dropping message.`);
+      channel.ack(originalMsg);
     } else {
-       channel.nack(originalMsg, false, true);
+      channel.nack(originalMsg, false, true);
     }
   }
 }

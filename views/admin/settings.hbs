@@ -6,7 +6,7 @@
       </button>
       <h1>تنظیمات سیستم</h1>
     </div>
-    <span class="subtitle">پیکربندی وب‌سرویس‌ها و پنل‌های پیامکی</span>
+    <span class="subtitle">پیکربندی وب‌سرویس‌ها، پنل‌های پیامکی و درگاه‌های پرداخت</span>
   </div>
 </header>
 
@@ -17,6 +17,7 @@
   </div>
 {{/if}}
 
+{{!-- تنظیمات کاوه‌نگار --}}
 <div class="content-wrapper">
   <div class="section-header">
     <span>تنظیمات سامانه پیامکی کاوه‌نگار</span>
@@ -33,7 +34,85 @@
 
     <button type="submit" class="btn btn-primary">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      <span>ذخیره تنظیمات</span>
+      <span>ذخیره تنظیمات کاوه‌نگار</span>
     </button>
   </form>
 </div>
+
+{{!-- تنظیمات پی‌پینگ --}}
+<div class="content-wrapper" style="margin-top: 1.5rem;">
+  <div class="section-header">
+    <span>تنظیمات درگاه پرداخت پی‌پینگ (PayPing)</span>
+  </div>
+  
+  <form method="POST" action="/spadmin/settings/payping" style="max-width: 600px;">
+    <div class="form-group text-left">
+      <label class="form-label" for="apiToken">توکن دسترسی درگاه (Bearer Token)</label>
+      <input type="password" class="form-control" id="apiToken" name="apiToken" placeholder="توکن API کپی شده از پنل پی‌پینگ" value="{{paypingApiToken}}" required />
+      <small style="color: var(--text-muted);">
+        توکن دسترسی تولید شده در پنل کاربری پی‌پینگ جهت ایجاد فاکتور، پرداخت آنلاین و تایید تراکنش‌ها.
+      </small>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+      <button type="submit" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span>ذخیره تنظیمات پی‌پینگ</span>
+      </button>
+
+      <button type="button" id="btn-test-payping" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span>تست درگاه (۱۰۰۰ تومان)</span>
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const testBtn = document.getElementById('btn-test-payping');
+    if (!testBtn) return;
+
+    testBtn.addEventListener('click', async function () {
+      const tokenInput = document.getElementById('apiToken');
+      const tokenValue = tokenInput ? tokenInput.value.trim() : '';
+
+      if (!tokenValue) {
+        alert('لطفاً ابتدا توکن درگاه پی‌پینگ را وارد نمایید.');
+        if (tokenInput) tokenInput.focus();
+        return;
+      }
+
+      testBtn.disabled = true;
+      const originalHtml = testBtn.innerHTML;
+      testBtn.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 0.4rem;">در حال ایجاد لینک پرداخت...</span>';
+
+      try {
+        const res = await fetch('/spadmin/settings/payping/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ apiToken: tokenValue }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          alert(data.message || 'خطا در ایجاد لینک پرداخت تستی');
+          return;
+        }
+
+        if (data.paymentUrl) {
+          window.open(data.paymentUrl, '_blank');
+        } else {
+          alert('آدرس درگاه دریافت نشد');
+        }
+      } catch (err) {
+        alert('خطا در برقراری ارتباط با سرور: ' + (err.message || err));
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = originalHtml;
+      }
+    });
+  });
+</script>

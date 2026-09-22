@@ -9,6 +9,7 @@ import { StaticModule } from './modules/static/static.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NodesModule } from './modules/nodes/nodes.module';
 import { HealthController } from './common/health.controller';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { isMaster } from './config/role';
 
 @Module({
@@ -20,6 +21,7 @@ import { isMaster } from './config/role';
       ignoreEnvFile: process.env.NODE_ENV === 'production',
     }),
     PrismaModule,
+    PaymentsModule,
     FormEngineModule,
     DeploymentModule,
     SyncModule,

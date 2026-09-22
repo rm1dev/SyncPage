@@ -35,6 +35,8 @@ export interface FormSyncPayload {
     otpLength?: number | null;
     sendUtmToWebhook?: boolean | null;
     sendUtmToSheet?: boolean | null;
+    paymentEnabled?: boolean | null;
+    productIds?: string[] | null;
   };
 }
 
@@ -48,4 +50,17 @@ export interface FormSubmissionSyncPayload {
   syncVersion: number;
   createdAt: string;
   verifiedAt?: string | null;
+  payment?: {
+    id: string;
+    productId: string;
+    amount: number;
+    status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
+    payCode?: string | null;
+    refId?: string | null;
+    clientRefId?: string | null;
+    cardNumber?: string | null;
+    cardHashPan?: string | null;
+    errorMessage?: string | null;
+    verifiedAt?: string | null;
+  } | null;
 }

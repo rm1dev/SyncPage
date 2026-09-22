@@ -67,6 +67,11 @@ model Form {
   sendUtmToWebhook Boolean         @default(true)
   sendUtmToSheet   Boolean         @default(true)
   
+  // تنظیمات پرداخت آنلاین
+  paymentEnabled  Boolean          @default(false)
+  formProducts    FormProduct[]
+  payments        Payment[]
+  
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   submissions     FormSubmission[]
@@ -94,6 +99,7 @@ model FormSubmission {
   webhookAttempts    Int          @default(0)
   webhookLastError   String?
   webhookInvocations WebhookInvocation[]
+  payment            Payment?
 
   @@index([formId])
   @@index([edgeNodeId])
@@ -245,8 +251,70 @@ model EdgeNode {
   notes           String?
   submissions     FormSubmission[]
   syncOperations  SyncOperationNode[]
+  payments        Payment[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   @@index([status])
 }
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  title        String
+  price        Int           // قیمت به تومان
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  formProducts FormProduct[]
+  payments     Payment[]
+}
+
+model FormProduct {
+  id        String   @id @default(uuid())
+  formId    String
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([formId, productId])
+  @@index([formId])
+  @@index([productId])
+}
+
+model Payment {
+  id           String         @id @default(uuid())
+  submissionId String         @unique
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  formId       String
+  form         Form           @relation(fields: [formId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  edgeNodeId   String?
+  edgeNode     EdgeNode?      @relation(fields: [edgeNodeId], references: [id], onDelete: SetNull)
+  amount       Int            // مبلغ به تومان
+  status       PaymentStatus  @default(PENDING)
+  payCode      String?
+  refId        String?
+  clientRefId  String?
+  cardNumber   String?
+  cardHashPan  String?
+  errorMessage String?
+  verifiedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([formId])
+  @@index([productId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([edgeNodeId])
+}
+

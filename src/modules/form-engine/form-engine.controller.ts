@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Post,
   Put,
@@ -24,8 +25,9 @@ export class FormEngineController {
     @Param('key') key: string,
     @Body() body: Record<string, unknown>,
     @Query() query: Record<string, string>,
+    @Headers('host') host?: string,
   ) {
-    return this.forms.submit(key, this.withUtms(body, query));
+    return this.forms.submit(key, this.withUtms(body, query), host);
   }
 
   @Post(':key/otp')
@@ -42,8 +44,9 @@ export class FormEngineController {
     @Param('key') key: string,
     @Body('submissionId') submissionId: string,
     @Body('code') code: string,
+    @Headers('host') host?: string,
   ) {
-    return this.forms.verifyOtp(key, submissionId, code);
+    return this.forms.verifyOtp(key, submissionId, code, host);
   }
 
   private withUtms(

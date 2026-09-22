@@ -6,6 +6,7 @@ import {
   Post,
   Query,
   Render,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
@@ -16,7 +17,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AdminTokenGuard } from '../../common/guards/admin-token.guard';
@@ -37,6 +38,10 @@ import { KavenegarService } from '../form-engine/kavenegar.service';
 import { IntegrationProfileService } from '../form-engine/integration-profile.service';
 import { OutboxService } from '../sync/outbox.service';
 import { CategoryService } from '../categories/category.service';
+import { ProductService } from '../payments/product.service';
+import { PaymentService } from '../payments/payment.service';
+import { PaypingService } from '../payments/payping.service';
+import { PaymentStatus } from '@prisma/client';
 
 @Controller('spadmin')
 export class AdminController {
@@ -51,6 +56,9 @@ export class AdminController {
     private readonly outbox: OutboxService,
     private readonly config: ConfigService,
     private readonly categories: CategoryService,
+    private readonly products: ProductService,
+    private readonly payments: PaymentService,
+    private readonly payping: PaypingService,
   ) {}
 
   private groupByCategory<
@@ -292,10 +300,11 @@ export class AdminController {
     @Query('flash') flash?: string,
     @Query('error') error?: string,
   ) {
-    const [rawForms, profiles, categories] = await Promise.all([
+    const [rawForms, profiles, categories, allProducts] = await Promise.all([
       this.forms.listWithSubmissionCounts(q),
       this.profiles.list(),
       this.categories.list(),
+      this.products.list(),
     ]);
 
     let form: any = {
@@ -304,6 +313,7 @@ export class AdminController {
       otpTemplate: 'verify',
       sendUtmToWebhook: true,
       sendUtmToSheet: true,
+      paymentEnabled: false,
     };
     let bodyJson = JSON.stringify(
       [
@@ -364,6 +374,18 @@ export class AdminController {
       }
     }
 
+    let attachedProductIds = new Set<string>();
+    if (form && form.formProducts) {
+      attachedProductIds = new Set(
+        form.formProducts.map((fp: any) => fp.productId),
+      );
+    }
+    const products = allProducts.map((p) => ({
+      ...p,
+      formattedPrice: p.price.toLocaleString('fa-IR'),
+      isAttached: attachedProductIds.has(p.id),
+    }));
+
     return {
       layout: 'main',
       title: 'مدیریت فرم‌ها',
@@ -384,6 +406,7 @@ export class AdminController {
       ),
       profiles,
       categories,
+      products,
       form,
       bodyJson,
       columnMappingJson,
@@ -494,6 +517,13 @@ export class AdminController {
         sendUtmToSheet:
           body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
+        paymentEnabled:
+          body.paymentEnabled === 'true' || body.paymentEnabled === 'on',
+        productIds: Array.isArray((body as any).productIds)
+          ? (body as any).productIds
+          : (body as any).productIds
+            ? [(body as any).productIds]
+            : [],
       });
       return res.redirect(
         '/spadmin/forms?flash=' + encodeURIComponent('فرم ذخیره شد'),
@@ -537,6 +567,13 @@ export class AdminController {
         sendUtmToSheet:
           body.sendUtmToSheet === 'true' || body.sendUtmToSheet === 'on',
         profileId: body.profileId || null,
+        paymentEnabled:
+          body.paymentEnabled === 'true' || body.paymentEnabled === 'on',
+        productIds: Array.isArray((body as any).productIds)
+          ? (body as any).productIds
+          : (body as any).productIds
+            ? [(body as any).productIds]
+            : [],
       });
       return res.redirect(
         '/spadmin/forms?flash=' + encodeURIComponent('فرم به‌روز شد'),
@@ -548,6 +585,133 @@ export class AdminController {
         .redirect(
           `/spadmin/forms?edit=${encodeURIComponent(id)}&error=${encodeURIComponent(message)}`,
         );
+    }
+  }
+
+  @Get('products')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/products')
+  async productsPage(
+    @Query('q') q?: string,
+    @Query('edit') editId?: string,
+    @Query('flash') flash?: string,
+    @Query('error') error?: string,
+  ) {
+    const rawProducts = await this.products.listWithFilter(q);
+    let editProduct: any = null;
+    if (editId) {
+      try {
+        editProduct = await this.products.getById(editId);
+      } catch {}
+    }
+
+    const products = rawProducts.map((p) => {
+      const d = new Date(p.createdAt);
+      const j = (d as any).jalali;
+      const jalaliDate = j
+        ? `${j.year}/${String(j.month).padStart(2, '0')}/${String(j.date).padStart(2, '0')}`
+        : d.toLocaleDateString('fa-IR');
+
+      return {
+        ...p,
+        formattedPrice: p.price.toLocaleString('fa-IR'),
+        jalaliDate,
+      };
+    });
+
+    return {
+      layout: 'main',
+      title: 'مدیریت محصولات',
+      active: 'products',
+      products,
+      editProduct,
+      showForm: !!editProduct,
+      q,
+      flash,
+      error,
+    };
+  }
+
+  @Post('products')
+  @UseGuards(AdminTokenGuard)
+  async createProduct(
+    @Body('title') title: string,
+    @Body('price') price: string,
+    @Body('description') description: string,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!title?.trim()) {
+        throw new BadRequestException('عنوان محصول الزامی است');
+      }
+      const numPrice = parseInt(price, 10);
+      if (isNaN(numPrice) || numPrice < 100) {
+        throw new BadRequestException(
+          'مبلغ محصول معتبر نیست (حداقل ۱۰۰ تومان)',
+        );
+      }
+      await this.products.create({
+        title,
+        price: numPrice,
+        description,
+      });
+      return res.redirect(
+        '/spadmin/products?flash=' +
+          encodeURIComponent('محصول جدید با موفقیت ثبت شد'),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'خطا در ثبت محصول';
+      return res.redirect('/spadmin/products?error=' + encodeURIComponent(msg));
+    }
+  }
+
+  @Post('products/:id')
+  @UseGuards(AdminTokenGuard)
+  async updateProduct(
+    @Param('id') id: string,
+    @Body('title') title: string,
+    @Body('price') price: string,
+    @Body('description') description: string,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!title?.trim()) {
+        throw new BadRequestException('عنوان محصول الزامی است');
+      }
+      const numPrice = parseInt(price, 10);
+      if (isNaN(numPrice) || numPrice < 100) {
+        throw new BadRequestException(
+          'مبلغ محصول معتبر نیست (حداقل ۱۰۰ تومان)',
+        );
+      }
+      await this.products.update(id, {
+        title,
+        price: numPrice,
+        description,
+      });
+      return res.redirect(
+        '/spadmin/products?flash=' +
+          encodeURIComponent('تغییرات محصول با موفقیت ذخیره شد'),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'خطا در ویرایش محصول';
+      return res.redirect(
+        `/spadmin/products?edit=${encodeURIComponent(id)}&error=${encodeURIComponent(msg)}`,
+      );
+    }
+  }
+
+  @Post('products/:id/delete')
+  @UseGuards(AdminTokenGuard)
+  async deleteProduct(@Param('id') id: string, @Res() res: Response) {
+    try {
+      await this.products.remove(id);
+      return res.redirect(
+        '/spadmin/products?flash=' + encodeURIComponent('محصول حذف شد'),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'خطا در حذف محصول';
+      return res.redirect('/spadmin/products?error=' + encodeURIComponent(msg));
     }
   }
 
@@ -948,12 +1112,16 @@ export class AdminController {
   @UseGuards(AdminTokenGuard)
   @Render('admin/settings')
   async settingsPage(@Query('flash') flash?: string) {
-    const kavenegarApiKey = await this.kavenegar.getApiKey();
+    const [kavenegarApiKey, paypingApiToken] = await Promise.all([
+      this.kavenegar.getApiKey(),
+      this.payping.getApiToken(),
+    ]);
     return {
       layout: 'main',
       title: 'تنظیمات سیستم',
       active: 'settings',
       kavenegarApiKey,
+      paypingApiToken,
       flash,
     };
   }
@@ -969,6 +1137,229 @@ export class AdminController {
       '/spadmin/settings?flash=' +
         encodeURIComponent('تنظیمات کاوه‌نگار ذخیره شد'),
     );
+  }
+
+  @Post('settings/payping')
+  @UseGuards(AdminTokenGuard)
+  async savePaypingSetting(
+    @Body('apiToken') apiToken: string,
+    @Res() res: Response,
+  ) {
+    await this.payping.setApiToken(apiToken || '');
+    return res.redirect(
+      '/spadmin/settings?flash=' +
+        encodeURIComponent('تنظیمات درگاه پی‌پینگ با موفقیت ذخیره شد'),
+    );
+  }
+
+  @Post('settings/payping/test')
+  @UseGuards(AdminTokenGuard)
+  async testPaypingSetting(
+    @Body('apiToken') apiToken: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    try {
+      let rawDomain = this.config.get<string>('domain') || 'land.sikaap.com';
+      if (rawDomain.includes('localhost') || rawDomain.startsWith('127.0.0.1')) {
+        rawDomain = 'land.sikaap.com';
+      }
+      const domain = rawDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const returnUrl = `https://${domain}/test/verify`;
+
+      const result = await this.payping.createPayment(
+        {
+          amount: 1000,
+          returnUrl,
+          description: 'تست درگاه پرداخت پی‌پینگ (۱۰۰۰ تومان)',
+        },
+        apiToken,
+      );
+
+      return res.json({
+        ok: true,
+        paymentUrl: result.paymentUrl,
+        code: result.code,
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'خطا در ایجاد لینک پرداخت تستی';
+      return res.status(400).json({
+        ok: false,
+        message: msg,
+      });
+    }
+  }
+
+  @Get('payments')
+  @UseGuards(AdminTokenGuard)
+  @Render('admin/payments')
+  async paymentsPage(
+    @Query('formId') formId?: string,
+    @Query('productId') productId?: string,
+    @Query('status') status?: PaymentStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const [forms, products] = await Promise.all([
+      this.forms.list(),
+      this.products.list(),
+    ]);
+
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (startDate) {
+      const [jy, jm, jd] = startDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        fromDate = new Date(g.year, g.month - 1, g.date, 0, 0, 0, 0);
+      }
+    }
+
+    if (endDate) {
+      const [jy, jm, jd] = endDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        toDate = new Date(g.year, g.month - 1, g.date, 23, 59, 59, 999);
+      }
+    }
+
+    const rawPayments = await this.payments.list({
+      formId: formId || undefined,
+      productId: productId || undefined,
+      status: status || undefined,
+      fromDate,
+      toDate,
+    });
+
+    let completedCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+    let totalCompletedAmount = 0;
+
+    const payments = rawPayments.map((p) => {
+      if (p.status === 'COMPLETED') {
+        completedCount++;
+        totalCompletedAmount += p.amount;
+      } else if (p.status === 'PENDING') {
+        pendingCount++;
+      } else {
+        failedCount++;
+      }
+
+      const cd = new Date(p.createdAt);
+      const cj = (cd as any).jalali;
+      const createdAtFa = cj
+        ? `${cj.year}/${String(cj.month).padStart(2, '0')}/${String(cj.date).padStart(2, '0')} ${String(cd.getHours()).padStart(2, '0')}:${String(cd.getMinutes()).padStart(2, '0')}`
+        : cd.toLocaleString('fa-IR');
+
+      let verifiedAtFa = '';
+      if (p.verifiedAt) {
+        const vd = new Date(p.verifiedAt);
+        const vj = (vd as any).jalali;
+        verifiedAtFa = vj
+          ? `${vj.year}/${String(vj.month).padStart(2, '0')}/${String(vj.date).padStart(2, '0')} ${String(vd.getHours()).padStart(2, '0')}:${String(vd.getMinutes()).padStart(2, '0')}`
+          : vd.toLocaleString('fa-IR');
+      }
+
+      return {
+        id: p.id,
+        formTitle: p.form?.title || '—',
+        formSlug: p.form?.slug || '',
+        productTitle: p.product?.title || '—',
+        amount: p.amount,
+        formattedAmount: p.amount.toLocaleString('fa-IR'),
+        status: p.status,
+        isCompleted: p.status === 'COMPLETED',
+        isPending: p.status === 'PENDING',
+        isReversed: p.status === 'REVERSED',
+        isFailed: p.status === 'FAILED',
+        refId: p.refId,
+        cardNumber: p.cardNumber,
+        nodeTitle: p.edgeNode ? p.edgeNode.title : 'سرور Master',
+        createdAtFa,
+        verifiedAtFa,
+        submissionPayload: p.submission?.payload
+          ? JSON.stringify(p.submission.payload, null, 2)
+          : null,
+        errorMessage: p.errorMessage,
+      };
+    });
+
+    return {
+      layout: 'main',
+      title: 'پرداخت‌ها',
+      active: 'payments',
+      forms,
+      products,
+      formId,
+      productId,
+      status,
+      startDate,
+      endDate,
+      payments,
+      stats: {
+        totalCount: rawPayments.length,
+        completedCount,
+        pendingCount,
+        failedCount,
+        formattedTotalAmount: totalCompletedAmount.toLocaleString('fa-IR'),
+      },
+    };
+  }
+
+  @Get('payments/export/excel')
+  @UseGuards(AdminTokenGuard)
+  async exportPaymentsExcel(
+    @Query('formId') formId?: string,
+    @Query('productId') productId?: string,
+    @Query('status') status?: PaymentStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Res() res?: Response,
+  ) {
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (startDate) {
+      const [jy, jm, jd] = startDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        fromDate = new Date(g.year, g.month - 1, g.date, 0, 0, 0, 0);
+      }
+    }
+
+    if (endDate) {
+      const [jy, jm, jd] = endDate.split('/').map(Number);
+      if (jy && jm && jd) {
+        const g = (Date as any).jalaliToGregorian(jy, jm, jd);
+        toDate = new Date(g.year, g.month - 1, g.date, 23, 59, 59, 999);
+      }
+    }
+
+    const rawPayments = await this.payments.list({
+      formId: formId || undefined,
+      productId: productId || undefined,
+      status: status || undefined,
+      fromDate,
+      toDate,
+    });
+
+    const buffer = await this.payments.exportExcel(rawPayments);
+
+    if (res) {
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="payments-${Date.now()}.xlsx"`,
+      );
+      return res.send(buffer);
+    }
+    return buffer;
   }
 
   @Get('submissions')

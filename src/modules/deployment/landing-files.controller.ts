@@ -103,7 +103,7 @@ export class LandingFilesController {
     }
     try {
       this.files.writeLandingFile(body.slug, body.path, body.content ?? '');
-      
+
       // سینک کردن بعد از ویرایش فایل
       // syncSingle calls syncSingleForOperation which recalculates the checksum
       // and bumps the version number, creating an immutable package and triggering outbox.

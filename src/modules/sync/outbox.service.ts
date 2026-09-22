@@ -45,7 +45,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const syncMode = this.config.get<string>('syncMode') || 'auto';
     if (syncMode === 'http') {
-      this.logger.log('Outbox: SYNC_MODE is http, skipping RabbitMQ connection');
+      this.logger.log(
+        'Outbox: SYNC_MODE is http, skipping RabbitMQ connection',
+      );
     } else {
       // Do not await connectWithRetry so that it doesn't block application startup
       this.connectWithRetry().catch((err) => this.logger.error(err));
@@ -107,7 +109,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   async getMasterPendingSyncCount(): Promise<number> {
     return this.prisma.outboxEvent.count({
       where: {
-        eventType: { in: ['landing.sync', 'form.sync', 'setting.sync'] },
+        eventType: {
+          in: ['landing.sync', 'form.sync', 'setting.sync', 'product.sync'],
+        },
         status: { in: [OutboxStatus.PENDING, OutboxStatus.FAILED] },
       },
     });
@@ -236,6 +240,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     });
     await channel.bindQueue(edgeQueue, 'landing.exchange', 'landing.sync');
     await channel.bindQueue(edgeQueue, 'landing.exchange', 'form.sync');
+    await channel.bindQueue(edgeQueue, 'landing.exchange', 'product.sync');
     await channel.bindQueue(
       masterQueue,
       'landing.exchange',
@@ -248,6 +253,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       await channel.assertQueue(q, { durable: true });
       await channel.bindQueue(q, 'landing.exchange', 'landing.sync');
       await channel.bindQueue(q, 'landing.exchange', 'form.sync');
+      await channel.bindQueue(q, 'landing.exchange', 'product.sync');
     }
 
     this.connection = connection;
@@ -318,7 +324,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     }
     const token = this.config.get<string>('syncHttpToken') || '';
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    
+
     let lastErr: unknown;
     for (const url of urls) {
       try {
@@ -351,7 +357,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
     }
     const token = this.config.get<string>('syncHttpToken') || '';
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    
+
     let lastErr: unknown;
     for (const url of urls) {
       try {
@@ -362,7 +368,7 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
             headers,
             timeout: 15_000,
             validateStatus: (s: number) => s >= 200 && s < 300,
-          }
+          },
         );
         if (data?.ok !== true || !data.results) {
           throw new Error(`Unexpected response from ${url}`);
@@ -371,7 +377,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         lastErr = err;
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`HTTP submission batch push failed (${url}): ${message}`);
+        this.logger.warn(
+          `HTTP submission batch push failed (${url}): ${message}`,
+        );
       }
     }
     throw lastErr instanceof Error
@@ -390,7 +398,13 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       // هر نقش فقط eventهای مربوط به خودش رو publish می‌کنه
       const eventTypes =
         role === 'MASTER'
-          ? ['landing.sync', 'form.sync', 'setting.sync', 'landing.delete']
+          ? [
+              'landing.sync',
+              'form.sync',
+              'setting.sync',
+              'landing.delete',
+              'product.sync',
+            ]
           : ['form.submission.sync'];
 
       const batch = await this.prisma.outboxEvent.findMany({
@@ -405,59 +419,71 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
       if (!batch.length) return;
 
       // کانال نداریم؟ وصل شدن رو بیرون از حلقه شروع کن (بدون await — flush معطل نمونه)
-      if (syncMode !== 'http' && !this.channel && !this.connecting && !this.destroyed) {
+      if (
+        syncMode !== 'http' &&
+        !this.channel &&
+        !this.connecting &&
+        !this.destroyed
+      ) {
         void this.connectWithRetry();
       }
 
       if (syncMode === 'http' && role !== 'MASTER') {
-         // Edge in HTTP mode: batch submissions
-         const submissionEvents = batch.filter(e => e.eventType === 'form.submission.sync');
-         if (submissionEvents.length > 0) {
-            try {
-              const payloads = submissionEvents.map(e => e.payload as unknown as FormSubmissionSyncPayload);
-              const { results } = await this.pushSubmissionsBatchViaHttp(payloads);
-              
-              for (const res of results) {
-                const event = submissionEvents.find(e => e.idempotencyKey === res.idempotencyKey);
-                if (event) {
-                  if (res.status === 'accepted' || res.status === 'duplicate') {
-                    await this.prisma.outboxEvent.update({
-                      where: { id: event.id },
-                      data: {
-                        status: OutboxStatus.SENT,
-                        attempts: { increment: 1 },
-                        lastError: null,
-                      },
-                    });
-                  } else {
-                    await this.prisma.outboxEvent.update({
-                      where: { id: event.id },
-                      data: {
-                        status: OutboxStatus.FAILED,
-                        attempts: { increment: 1 },
-                        lastError: 'Master returned failed status',
-                      },
-                    });
-                  }
-                }
-              }
-            } catch (err) {
-               const message = err instanceof Error ? err.message : String(err);
-               this.logger.error(`Outbox batch push failed: ${message}`);
-               for (const event of submissionEvents) {
+        // Edge in HTTP mode: batch submissions
+        const submissionEvents = batch.filter(
+          (e) => e.eventType === 'form.submission.sync',
+        );
+        if (submissionEvents.length > 0) {
+          try {
+            const payloads = submissionEvents.map(
+              (e) => e.payload as unknown as FormSubmissionSyncPayload,
+            );
+            const { results } =
+              await this.pushSubmissionsBatchViaHttp(payloads);
+
+            for (const res of results) {
+              const event = submissionEvents.find(
+                (e) => e.idempotencyKey === res.idempotencyKey,
+              );
+              if (event) {
+                if (res.status === 'accepted' || res.status === 'duplicate') {
+                  await this.prisma.outboxEvent.update({
+                    where: { id: event.id },
+                    data: {
+                      status: OutboxStatus.SENT,
+                      attempts: { increment: 1 },
+                      lastError: null,
+                    },
+                  });
+                } else {
                   await this.prisma.outboxEvent.update({
                     where: { id: event.id },
                     data: {
                       status: OutboxStatus.FAILED,
                       attempts: { increment: 1 },
-                      lastError: message,
+                      lastError: 'Master returned failed status',
                     },
                   });
-               }
+                }
+              }
             }
-         }
-         // Skip to next iteration since we handled all HTTP mode edge submissions
-         return;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.error(`Outbox batch push failed: ${message}`);
+            for (const event of submissionEvents) {
+              await this.prisma.outboxEvent.update({
+                where: { id: event.id },
+                data: {
+                  status: OutboxStatus.FAILED,
+                  attempts: { increment: 1 },
+                  lastError: message,
+                },
+              });
+            }
+          }
+        }
+        // Skip to next iteration since we handled all HTTP mode edge submissions
+        return;
       }
 
       for (const event of batch) {
@@ -502,7 +528,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
           } else if (syncMode === 'http' && role === 'MASTER') {
             // در حالت HTTP، مستر نیازی به ارسال نداره چون Edge خودش پول میکنه
             // ایونت رو به عنوان SENT مارک میکنیم
-            this.logger.log(`Outbox marked as SENT in HTTP mode: ${event.idempotencyKey}`);
+            this.logger.log(
+              `Outbox marked as SENT in HTTP mode: ${event.idempotencyKey}`,
+            );
           } else {
             // نه کانال نه مسیر HTTP — بدون سوزوندن attempts بذار برای دور بعد
             continue;

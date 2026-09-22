@@ -69,6 +69,14 @@ export class CreateFormDto {
   @IsOptional()
   @IsString()
   profileId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  paymentEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  productIds?: string[];
 }
 
 export class UpdateFormDto {
@@ -130,6 +138,14 @@ export class UpdateFormDto {
   @IsOptional()
   @IsString()
   profileId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  paymentEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  productIds?: string[];
 }
 
 export class SubmitFormDto {

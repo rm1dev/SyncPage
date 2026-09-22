@@ -116,7 +116,7 @@ export class DeploymentController {
   ) {
     const isFull = fullStr === '1';
     const manifest = await this.deployment.getSyncManifest(sinceStr, isFull);
-    
+
     const manifestJson = JSON.stringify(manifest);
     const etag = createHash('md5').update(manifestJson).digest('hex');
 
@@ -143,7 +143,7 @@ export class DeploymentController {
   ) {
     const isFull = fullStr === '1';
     const manifest = await this.deployment.getSyncManifest(sinceStr, isFull);
-    
+
     const manifestJson = JSON.stringify(manifest);
     const etag = createHash('md5').update(manifestJson).digest('hex');
 
