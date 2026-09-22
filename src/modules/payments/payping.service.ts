@@ -119,8 +119,8 @@ export class PaypingService {
   }
 
   async verifyPayment(
-    refId: string,
-    amount: number,
+    payCode: string,
+    expectedAmount: number,
   ): Promise<PaypingVerifyResult> {
     const token = await this.getApiToken();
     if (!token) {
@@ -129,13 +129,18 @@ export class PaypingService {
         errorMessage: 'کلید درگاه پی‌پینگ تنظیم نشده است',
       };
     }
+    if (!payCode?.trim()) {
+      return {
+        success: false,
+        errorMessage: 'کد پرداخت پی‌پینگ برای تایید تراکنش ثبت نشده است',
+      };
+    }
 
     try {
       const response = await axios.post(
         `${this.baseUrl}/v2/pay/verify`,
         {
-          refId,
-          amount,
+          code: payCode,
         },
         {
           headers: {
@@ -149,13 +154,13 @@ export class PaypingService {
 
       return {
         success: true,
-        amount: response.data?.amount ?? amount,
+        amount: response.data?.amount ?? expectedAmount,
         cardNumber: response.data?.cardNumber,
         cardHashPan: response.data?.cardHashPan,
       };
     } catch (err) {
       const msg = this.extractErrorMessage(err, 'تراکنش توسط درگاه تایید نشد');
-      this.logger.warn(`PayPing verify failed for refId=${refId}: ${msg}`);
+      this.logger.warn(`PayPing verify failed for code=${payCode}: ${msg}`);
       return {
         success: false,
         errorMessage: msg,
