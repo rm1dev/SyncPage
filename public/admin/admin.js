@@ -1042,14 +1042,14 @@ function fmLanguageFor(cm, path) {
   switch (ext) {
     case 'html':
     case 'htm':
-      return cm.html();
+      return cm.html.html();
     case 'css':
-      return cm.css();
+      return cm.css.css();
     case 'js':
     case 'mjs':
-      return cm.javascript();
+      return cm.javascript.javascript();
     case 'json':
-      return cm.json();
+      return cm.json.json();
     default:
       return null;
   }
@@ -1068,6 +1068,10 @@ function fmMediaTypeFor(path) {
 
 function fmDownloadUrl(slug, path) {
   return `/spadmin/files/download/file?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`;
+}
+
+function fmPreviewUrl(slug, path) {
+  return `/spadmin/files/api/preview?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`;
 }
 
 function initFileManager(root) {
@@ -1167,7 +1171,7 @@ function initFileManager(root) {
       cm.language.syntaxHighlighting(cm.language.defaultHighlightStyle, {
         fallback: true,
       }),
-      cm.oneDark,
+      cm.oneDark.oneDark,
       cm.view.EditorView.lineWrapping,
     ];
     const langExt = fmLanguageFor(cm, path);
@@ -1199,7 +1203,7 @@ function initFileManager(root) {
 
   function showMediaPreview(path, mediaType) {
     if (!mediaPreview) return;
-    const mediaUrl = fmDownloadUrl(slug, path);
+    const mediaUrl = fmPreviewUrl(slug, path);
     mediaPreview.replaceChildren();
 
     const media = document.createElement(mediaType === 'image' ? 'img' : 'video');

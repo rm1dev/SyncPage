@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { AdminTokenGuard } from '../../common/guards/admin-token.guard';
 import { FileService } from './file.service';
 import { DeploymentService } from './deployment.service';
@@ -112,6 +112,26 @@ export class LandingFilesController {
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Write failed',
+      );
+    }
+  }
+
+  /** نمایش inline فایل (برای پیش‌نمایش تصویر و ویدئو) */
+  @Get('api/preview')
+  previewFile(
+    @Query('slug') slug: string,
+    @Query('path') path: string,
+    @Res() res: Response,
+  ) {
+    if (!slug || !path)
+      throw new BadRequestException('slug and path are required');
+    try {
+      const absPath = this.files.getLandingFilePath(slug, path);
+      // res.sendFile requires an absolute path; staticPagesPath may be relative.
+      return res.sendFile(resolve(absPath));
+    } catch (err) {
+      throw new NotFoundException(
+        err instanceof Error ? err.message : 'File not found',
       );
     }
   }
