@@ -1055,6 +1055,21 @@ function fmLanguageFor(cm, path) {
   }
 }
 
+function fmMediaTypeFor(path) {
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  if (['avif', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'].includes(ext)) {
+    return 'image';
+  }
+  if (['m4v', 'mov', 'mp4', 'ogg', 'ogv', 'webm'].includes(ext)) {
+    return 'video';
+  }
+  return null;
+}
+
+function fmDownloadUrl(slug, path) {
+  return `/spadmin/files/download/file?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`;
+}
+
 function initFileManager(root) {
   const treeEl = document.getElementById('file-tree');
   const landingSelect = /** @type {HTMLSelectElement} */ (
@@ -1064,6 +1079,7 @@ function initFileManager(root) {
   const editorActions = document.getElementById('fm-editor-actions');
   const emptyState = document.getElementById('fm-empty-state');
   const editorContainer = document.getElementById('fm-editor-container');
+  const mediaPreview = document.getElementById('fm-media-preview');
   const textarea = /** @type {HTMLTextAreaElement} */ (
     document.getElementById('fm-editor-textarea')
   );
@@ -1148,7 +1164,7 @@ function initFileManager(root) {
       cm.view.lineNumbers(),
       cm.view.highlightActiveLine(),
       cm.view.highlightActiveLineGutter(),
-      cm.lang.syntaxHighlighting(cm.lang.defaultHighlightStyle, {
+      cm.language.syntaxHighlighting(cm.language.defaultHighlightStyle, {
         fallback: true,
       }),
       cm.oneDark,
@@ -1181,6 +1197,22 @@ function initFileManager(root) {
     return textarea ? textarea.value : '';
   }
 
+  function showMediaPreview(path, mediaType) {
+    if (!mediaPreview) return;
+    const mediaUrl = fmDownloadUrl(slug, path);
+    mediaPreview.replaceChildren();
+
+    const media = document.createElement(mediaType === 'image' ? 'img' : 'video');
+    media.src = mediaUrl;
+    media.alt = path;
+    if (mediaType === 'video') {
+      media.controls = true;
+      media.preload = 'metadata';
+    }
+    mediaPreview.appendChild(media);
+    mediaPreview.style.display = 'grid';
+  }
+
   // --- باز کردن فایل ---
   async function openFile(path, rowEl) {
     if (!slug) return;
@@ -1189,12 +1221,33 @@ function initFileManager(root) {
       .forEach((r) => r.classList.remove('active'));
     if (rowEl) rowEl.classList.add('active');
 
+    currentPath = path;
+    const mediaType = fmMediaTypeFor(path);
+    if (editorTitle) editorTitle.textContent = path;
+    if (emptyState) emptyState.style.display = 'none';
+    if (downloadFileBtn) downloadFileBtn.href = fmDownloadUrl(slug, path);
+
+    if (mediaType) {
+      if (editorContainer) editorContainer.style.display = 'none';
+      if (editorActions) editorActions.style.display = 'flex';
+      if (saveBtn) saveBtn.style.display = 'none';
+      showMediaPreview(path, mediaType);
+      return;
+    }
+
+    if (mediaPreview) {
+      mediaPreview.replaceChildren();
+      mediaPreview.style.display = 'none';
+    }
+    if (saveBtn) saveBtn.style.display = '';
+
     try {
       const res = await fetch(
         `/spadmin/files/api/read?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`,
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        currentPath = null;
         showToast(
           err.message || 'خواندن فایل ممکن نشد (فایل باینری؟)',
           'danger',
@@ -1202,18 +1255,12 @@ function initFileManager(root) {
         return;
       }
       const data = await res.json();
-      currentPath = path;
 
-      if (editorTitle) editorTitle.textContent = path;
-      if (emptyState) emptyState.style.display = 'none';
       if (editorContainer) editorContainer.style.display = 'block';
       if (editorActions) editorActions.style.display = 'flex';
-      if (downloadFileBtn) {
-        downloadFileBtn.href = `/spadmin/files/download/file?slug=${encodeURIComponent(slug)}&path=${encodeURIComponent(path)}`;
-      }
-
       await ensureEditor(data.content, path);
     } catch (err) {
+      currentPath = null;
       showToast('خطا در خواندن فایل', 'danger');
     }
   }

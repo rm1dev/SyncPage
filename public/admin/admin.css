@@ -1434,6 +1434,30 @@ textarea.form-control {
   margin-top: 0.25rem;
 }
 
+.fm-media-preview {
+  display: grid;
+  place-items: center;
+  min-height: 480px;
+  margin-top: 0.25rem;
+  padding: 1rem;
+  overflow: auto;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.fm-media-preview img,
+.fm-media-preview video {
+  display: block;
+  max-width: 100%;
+  max-height: 65vh;
+  border-radius: calc(var(--radius-md) - 2px);
+}
+
+.fm-media-preview video {
+  width: min(100%, 900px);
+}
+
 #fm-editor-textarea {
   min-height: 480px;
   font-family: 'Fira Code', 'Courier New', monospace;

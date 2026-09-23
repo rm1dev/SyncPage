@@ -153,19 +153,10 @@ export class PaymentVerifyController {
         status: 'FAILED',
         errorMessage,
       });
-    } else if (!payment.payCode) {
-      errorMessage = 'کد پرداخت پی‌پینگ برای این تراکنش ثبت نشده است';
-      await this.payments.updatePayment(payment.id, {
-        status: 'FAILED',
-        refId,
-        cardNumber,
-        cardHashPan,
-        errorMessage,
-      });
     } else {
-      // پی‌پینگ برای وریفای به کد اولیه پرداخت نیاز دارد، نه RefID بازگشتی.
+      // پی‌پینگ برای وریفای به RefID بازگشتی و مبلغ مورد انتظار نیاز دارد.
       const verifyResult = await this.payping.verifyPayment(
-        payment.payCode,
+        refId,
         payment.amount,
       );
 
