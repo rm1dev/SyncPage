@@ -755,6 +755,7 @@ function escapeHtmlText(value) {
 
 function buildLandingFormHtml(formId, fields) {
   const parts = [`<form id="${escapeAttr(formId)}">`];
+  let hasDateField = false;
   for (const field of fields) {
     const name = String(field.name || '').trim();
     if (!name) continue;
@@ -808,6 +809,14 @@ function buildLandingFormHtml(formId, fields) {
       );
       continue;
     }
+    if (inputType === 'date') {
+      // فیلد تاریخ به صورت شمسی (جلالی) با datepicker محلی
+      hasDateField = true;
+      parts.push(
+        `  <label>\n    ${escapeHtmlText(label)}\n    <input type="text" name="${escapeAttr(name)}" data-jalali-datepicker placeholder="1403/01/01" inputmode="numeric" autocomplete="off"${required} />\n  </label>`,
+      );
+      continue;
+    }
     parts.push(
       `  <label>\n    ${escapeHtmlText(label)}\n    <input type="${inputType}" name="${escapeAttr(name)}"${required} />\n  </label>`,
     );
@@ -822,11 +831,23 @@ function buildLandingFormHtml(formId, fields) {
     );
     const firstPid = checkedProduct ? checkedProduct.value : 'PRODUCT_ID_HERE';
     parts.push(`  <!-- شناسه محصول انتخابی جهت پرداخت آنلاین -->`);
-    parts.push(`  <input type="hidden" name="productId" value="${escapeAttr(firstPid)}" />`);
+    parts.push(
+      `  <input type="hidden" name="productId" value="${escapeAttr(firstPid)}" />`,
+    );
   }
 
   parts.push('  <button type="submit">Submit</button>');
   parts.push('</form>');
+  if (hasDateField) {
+    parts.push('');
+    parts.push('<!-- DatePicker شمسی (جلالی) -->');
+    parts.push(
+      '<link rel="stylesheet" href="/public/vendor/jalali-datepicker/jalali-datepicker.css" />',
+    );
+    parts.push(
+      '<script src="/public/vendor/jalali-datepicker/jalali-datepicker.js"><\/script>',
+    );
+  }
   return parts.join('\n');
 }
 
@@ -1206,7 +1227,9 @@ function initFileManager(root) {
     const mediaUrl = fmPreviewUrl(slug, path);
     mediaPreview.replaceChildren();
 
-    const media = document.createElement(mediaType === 'image' ? 'img' : 'video');
+    const media = document.createElement(
+      mediaType === 'image' ? 'img' : 'video',
+    );
     media.src = mediaUrl;
     media.alt = path;
     if (mediaType === 'video') {
