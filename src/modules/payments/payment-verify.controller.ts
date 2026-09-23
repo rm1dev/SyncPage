@@ -56,80 +56,40 @@ export class PaymentVerifyController {
     body: Record<string, string>,
     res: Response,
   ) {
-    const refId = String(
-      query.refid ||
-        query.refId ||
-        query.RefId ||
-        body.refid ||
-        body.refId ||
-        body.RefId ||
-        '',
-    ).trim();
-
-    const clientRefId = String(
-      query.clientrefid ||
-        query.clientRefId ||
-        query.ClientRefId ||
-        body.clientrefid ||
-        body.clientRefId ||
-        body.ClientRefId ||
-        '',
-    ).trim();
-
-    const cardNumber = String(
-      query.cardnumber ||
-        query.cardNumber ||
-        body.cardnumber ||
-        body.cardNumber ||
-        '',
-    ).trim();
-
-    const cardHashPan = String(
-      query.cardhashpan ||
-        query.cardHashPan ||
-        body.cardhashpan ||
-        body.cardHashPan ||
-        '',
-    ).trim();
+    // PayPing posts a form-urlencoded envelope with the payment identifiers in data.
+    const callbackData = this.parseCallbackData(body.data ?? query.data);
+    const envelope = this.parseCallbackData(body);
+    const field = (key: string): string => {
+      const value = callbackData[key] ?? envelope[key] ?? query[key];
+      return typeof value === 'string' || typeof value === 'number'
+        ? String(value).trim()
+        : '';
+    };
+    const refId = field('paymentRefId') || field('refId') || field('RefId');
+    const paymentCode = field('paymentCode');
+    const clientRefId = field('clientRefId') || field('ClientRefId');
+    const cardNumber = field('cardNumber');
+    const cardHashPan = field('cardHashPan');
+    const statusValue = envelope.status ?? query.status;
+    const status =
+      typeof statusValue === 'string' || typeof statusValue === 'number'
+        ? String(statusValue).trim()
+        : '';
+    const callbackAmount = field('amount');
 
     this.logger.log(
-      `PayPing return for slug="${slug}", refId="${refId}", clientRefId="${clientRefId}"`,
+      `PayPing return for slug="${slug}", paymentRefId="${refId}", clientRefId="${clientRefId}"`,
     );
 
-    // پیدا کردن فرم بر اساس اسلاگ
-    const form = await this.prisma.form.findFirst({
-      where: { slug },
-      include: { formProducts: { include: { product: true } } },
-    });
-
-    // پیدا کردن رکورد پرداخت
-    let payment = clientRefId
-      ? await this.payments.getByClientRefId(clientRefId)
-      : null;
-
-    if (!payment && refId) {
-      payment = await this.prisma.payment.findFirst({
-        where: { refId },
-        include: {
-          form: true,
-          product: true,
-          submission: true,
-        },
-      });
-    }
-
-    if (!payment && form) {
-      // در صورتی که clientRefId از سمت درگاه نرسیده باشد، آخرین پرداخت PENDING این فرم را جستجو می‌کنیم
-      payment = await this.prisma.payment.findFirst({
-        where: { formId: form.id, status: 'PENDING' },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          form: true,
-          product: true,
-          submission: true,
-        },
-      });
-    }
+    const form = await this.prisma.form.findUnique({ where: { slug } });
+    // Never associate an unrecognized callback with another customer's pending order.
+    const payment =
+      form && clientRefId
+        ? await this.prisma.payment.findFirst({
+            where: { id: clientRefId, formId: form.id },
+            include: { form: true, product: true, submission: true },
+          })
+        : null;
 
     let isSuccess = false;
     let isReversed = false;
@@ -142,40 +102,68 @@ export class PaymentVerifyController {
     if (!payment) {
       errorMessage = 'اطلاعات تراکنش یافت نشد یا معتبر نیست';
     } else if (payment.status === 'COMPLETED') {
-      // تراکنش قبلاً با موفقیت تایید شده (مثلاً رفرش صفحه توسط کاربر)
-      isSuccess = true;
-      finalRefId = payment.refId || finalRefId;
-      finalCardNumber = payment.cardNumber || finalCardNumber;
-    } else if (!refId) {
-      // بازگشت از درگاه بدون کد پیگیری (انصراف یا خطا)
-      errorMessage = 'پرداخت توسط کاربر لغو شد یا در درگاه انجام نپذیرفت';
-      await this.payments.updatePayment(payment.id, {
-        status: 'FAILED',
-        errorMessage,
-      });
+      if (
+        (refId && payment.refId !== refId) ||
+        (paymentCode && payment.payCode !== paymentCode)
+      ) {
+        errorMessage = 'کد رهگیری با تراکنش تاییدشده مطابقت ندارد';
+      } else {
+        isSuccess = true;
+        finalRefId = payment.refId || '';
+        finalCardNumber = payment.cardNumber || '';
+      }
+    } else if (payment.status === 'REVERSED') {
+      isReversed = true;
+      errorMessage =
+        payment.errorMessage || 'وجه این تراکنش برگشت داده شده است';
+    } else if (!refId || !paymentCode || !/^\d+$/.test(refId)) {
+      errorMessage = 'اطلاعات بازگشتی پرداخت (کد پرداخت یا کد رهگیری) ناقص است';
+    } else if (payment.payCode !== paymentCode) {
+      errorMessage = 'کد پرداخت بازگشتی با سفارش ثبت‌شده مطابقت ندارد';
+    } else if (
+      !/^\d+$/.test(callbackAmount) ||
+      Number(callbackAmount) !== payment.amount
+    ) {
+      errorMessage = 'مبلغ بازگشتی با مبلغ سفارش مطابقت ندارد';
+    } else if (status !== '1') {
+      errorMessage = 'پرداخت در درگاه موفق نبوده است';
     } else {
-      // پی‌پینگ برای وریفای به RefID بازگشتی و مبلغ مورد انتظار نیاز دارد.
       const verifyResult = await this.payping.verifyPayment(
         refId,
+        paymentCode,
         payment.amount,
       );
 
       if (verifyResult.success) {
-        const verifiedAmount = verifyResult.amount ?? payment.amount;
-
-        // کنترل تطابق دقیق مبلغ پرداخت شده با قیمت محصول
-        if (verifiedAmount !== payment.amount) {
+        const verifiedAmount = verifyResult.amount;
+        if (
+          verifyResult.clientRefId !== payment.id ||
+          String(verifyResult.paymentRefId) !== refId
+        ) {
+          errorMessage =
+            'شناسه سفارش یا کد رهگیری تاییدشده با اطلاعات تراکنش مطابقت ندارد';
+        } else if (
+          typeof verifiedAmount !== 'number' ||
+          !Number.isFinite(verifiedAmount)
+        ) {
+          errorMessage = 'مبلغ تاییدشده از درگاه دریافت نشد';
+        } else if (verifiedAmount !== payment.amount) {
           this.logger.warn(
             `Amount mismatch for payment ${payment.id}: expected ${payment.amount}, received ${verifiedAmount}. Initiating reverse...`,
           );
 
-          // ریورس خودکار در صورت عدم تطابق مبلغ
-          await this.payping.reversePayment(refId, verifiedAmount);
-          isReversed = true;
-          errorMessage = `مبلغ پرداختی با مبلغ سفارش مغایرت داشت؛ وجه پرداختی بلافاصله برگشت داده شد (Reverse).`;
+          // Mark as reversed only if the gateway confirms the refund.
+          const reverseResult = await this.payping.reversePayment(
+            refId,
+            paymentCode,
+          );
+          isReversed = reverseResult.success;
+          errorMessage = reverseResult.success
+            ? 'مبلغ پرداختی با سفارش مغایرت داشت و بازگشت وجه تایید شد.'
+            : 'مغایرت مبلغ پرداختی؛ بازگشت وجه تایید نشد. با پشتیبانی تماس بگیرید.';
 
           await this.payments.updatePayment(payment.id, {
-            status: 'REVERSED',
+            status: reverseResult.success ? 'REVERSED' : 'FAILED',
             refId,
             cardNumber: verifyResult.cardNumber || cardNumber,
             cardHashPan: verifyResult.cardHashPan || cardHashPan,
@@ -220,6 +208,20 @@ export class PaymentVerifyController {
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.send(htmlContent);
+  }
+
+  private parseCallbackData(value: unknown): Record<string, unknown> {
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value) as unknown;
+      } catch {
+        return {};
+      }
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
   }
 
   private renderVerifyPage(

@@ -429,8 +429,7 @@ export class FormEngineService {
         });
 
         if (product) {
-          let rawDomain =
-            process.env.DOMAIN || originHost || 'land.sikaap.com';
+          let rawDomain = process.env.DOMAIN || originHost || 'land.sikaap.com';
           if (
             rawDomain.includes('localhost') ||
             rawDomain.startsWith('127.0.0.1')
@@ -458,6 +457,7 @@ export class FormEngineService {
             amount: product.price,
             returnUrl,
             clientRefId: payment.id,
+            isReversible: true,
             payerIdentity: (result.submission.payload as any)?.[
               form.otpField || 'mobile'
             ],
@@ -583,8 +583,7 @@ export class FormEngineService {
         },
       );
 
-      let rawDomain =
-        process.env.DOMAIN || originHost || 'land.sikaap.com';
+      let rawDomain = process.env.DOMAIN || originHost || 'land.sikaap.com';
       if (
         rawDomain.includes('localhost') ||
         rawDomain.startsWith('127.0.0.1')
@@ -615,6 +614,7 @@ export class FormEngineService {
         amount: product.price,
         returnUrl,
         clientRefId: payment.id,
+        isReversible: true,
         payerIdentity: payerMobile,
         payerName,
         description: `پرداخت سفارش ${product.title} (${form.title})`,

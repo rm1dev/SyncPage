@@ -6,6 +6,7 @@ export interface CreatePaypingPaymentDto {
   amount: number; // مبلغ به تومان
   returnUrl: string;
   clientRefId?: string;
+  isReversible?: boolean;
   payerIdentity?: string;
   payerName?: string;
   description?: string;
@@ -14,6 +15,8 @@ export interface CreatePaypingPaymentDto {
 export interface PaypingVerifyResult {
   success: boolean;
   amount?: number;
+  clientRefId?: string;
+  paymentRefId?: number;
   cardNumber?: string;
   cardHashPan?: string;
   errorMessage?: string;
@@ -80,11 +83,12 @@ export class PaypingService {
 
     try {
       const response = await axios.post(
-        `${this.baseUrl}/v2/pay`,
+        `${this.baseUrl}/v3/pay`,
         {
           amount: dto.amount,
           returnUrl: dto.returnUrl,
           clientRefId: dto.clientRefId,
+          isReversible: dto.isReversible ?? false,
           payerIdentity: dto.payerIdentity,
           payerName: dto.payerName,
           description: dto.description || 'پرداخت آنلاین فرم',
@@ -99,15 +103,19 @@ export class PaypingService {
         },
       );
 
-      const code = response.data?.code;
-      if (!code) {
-        throw new Error('کد پرداخت از درگاه پی‌پینگ دریافت نشد');
+      const code: unknown = response.data?.paymentCode;
+      const paymentUrl: unknown = response.data?.url;
+      if (
+        typeof code !== 'string' ||
+        !code.trim() ||
+        typeof paymentUrl !== 'string' ||
+        !paymentUrl.trim() ||
+        !this.isPaypingPaymentUrl(paymentUrl)
+      ) {
+        throw new Error('کد یا لینک پرداخت معتبر از پی‌پینگ دریافت نشد');
       }
 
-      return {
-        code,
-        paymentUrl: `${this.baseUrl}/v2/pay/gotoipg/${code}`,
-      };
+      return { code, paymentUrl };
     } catch (err) {
       const msg = this.extractErrorMessage(
         err,
@@ -119,7 +127,8 @@ export class PaypingService {
   }
 
   async verifyPayment(
-    refId: string,
+    paymentRefId: string,
+    paymentCode: string,
     amount: number,
   ): Promise<PaypingVerifyResult> {
     const token = await this.getApiToken();
@@ -129,18 +138,24 @@ export class PaypingService {
         errorMessage: 'کلید درگاه پی‌پینگ تنظیم نشده است',
       };
     }
-    if (!refId?.trim()) {
+    if (
+      !paymentRefId?.trim() ||
+      !paymentCode?.trim() ||
+      !/^\d+$/.test(paymentRefId)
+    ) {
       return {
         success: false,
-        errorMessage: 'کد رهگیری پرداخت پی‌پینگ برای تایید تراکنش ثبت نشده است',
+        errorMessage:
+          'کد رهگیری یا کد پرداخت پی‌پینگ برای تایید تراکنش معتبر نیست',
       };
     }
 
     try {
       const response = await axios.post(
-        `${this.baseUrl}/v2/pay/verify`,
+        `${this.baseUrl}/v3/pay/verify`,
         {
-          refId,
+          paymentRefId: Number(paymentRefId),
+          paymentCode,
           amount,
         },
         {
@@ -155,13 +170,17 @@ export class PaypingService {
 
       return {
         success: true,
-        amount: response.data?.amount ?? amount,
+        amount: response.data?.amount,
+        clientRefId: response.data?.clientRefId,
+        paymentRefId: response.data?.paymentRefId,
         cardNumber: response.data?.cardNumber,
         cardHashPan: response.data?.cardHashPan,
       };
     } catch (err) {
       const msg = this.extractErrorMessage(err, 'تراکنش توسط درگاه تایید نشد');
-      this.logger.warn(`PayPing verify failed for refId=${refId}: ${msg}`);
+      this.logger.warn(
+        `PayPing verify failed for paymentRefId=${paymentRefId}: ${msg}`,
+      );
       return {
         success: false,
         errorMessage: msg,
@@ -170,8 +189,8 @@ export class PaypingService {
   }
 
   async reversePayment(
-    refId: string,
-    amount: number,
+    paymentRefId: string,
+    paymentCode: string,
   ): Promise<PaypingReverseResult> {
     const token = await this.getApiToken();
     if (!token) {
@@ -183,10 +202,10 @@ export class PaypingService {
 
     try {
       await axios.post(
-        `${this.baseUrl}/v2/pay/reverse`,
+        `${this.baseUrl}/v3/pay/reverse`,
         {
-          refId,
-          amount,
+          paymentRefId: Number(paymentRefId),
+          paymentCode,
         },
         {
           headers: {
@@ -204,8 +223,22 @@ export class PaypingService {
         err,
         'خطا در بازگشت وجه تراکنش (Reverse)',
       );
-      this.logger.error(`PayPing reverse failed for refId=${refId}: ${msg}`);
+      this.logger.error(
+        `PayPing reverse failed for paymentRefId=${paymentRefId}: ${msg}`,
+      );
       return { success: false, errorMessage: msg };
+    }
+  }
+
+  private isPaypingPaymentUrl(value: string): boolean {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        (url.hostname === 'payping.ir' || url.hostname.endsWith('.payping.ir'))
+      );
+    } catch {
+      return false;
     }
   }
 
