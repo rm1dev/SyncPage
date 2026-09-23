@@ -311,7 +311,7 @@ a:hover {
   flex-grow: 1;
   padding: 2.25rem 2.5rem;
   min-width: 0;
-  max-width: 1400px;
+  max-width: none;
 }
 
 /* Header Bar */
